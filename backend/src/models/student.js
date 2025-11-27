@@ -74,11 +74,11 @@ const studentSchema = new mongoose.Schema({
   timestamps: true 
 });
 
-// Index for performance
-studentSchema.index({ studentId: 1 });
-studentSchema.index({ grade: 1 });
-studentSchema.index({ status: 1 });
-studentSchema.index({ "parents": 1 });
+// ✅ FIXED: Remove duplicate indexes - only keep necessary ones
+// studentSchema.index({ studentId: 1 }); // REMOVE - already unique
+// studentSchema.index({ grade: 1 }); // REMOVE
+// studentSchema.index({ status: 1 }); // REMOVE  
+// studentSchema.index({ "parents": 1 }); // REMOVE
 
 // Auto-populate parents and classroom for queries
 studentSchema.pre('find', function() {

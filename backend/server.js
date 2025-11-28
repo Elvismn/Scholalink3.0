@@ -26,12 +26,14 @@ const curriculumRoutes = require('./src/routes/admin/curriculumRoutes');
 const clubRoutes = require('./src/routes/admin/clubRoutes');
 const stakeholderRoutes = require('./src/routes/admin/stakeholderRoutes');
 const superAdminUserRoutes = require('./src/routes/superadmin/userRoutes');
+const parentProfileRoutes = require('./src/routes/parents/profileRoutes');
 
 // Import auth routes
 const authRoutes = require('./src/routes/auth');
+const { auth, requireRole } = require('./src/middleware/auth');
 
 // Connect to database
-connectDB();
+connectDB();  
 
 const app = express();
 
@@ -72,6 +74,17 @@ app.post('/api/test-body', (req, res) => {
     }
   });
 });
+
+// TEMPORARY TEST ROUTE - Add this after body parsing middleware
+app.put('/api/parent/test-profile', auth, requireRole(['parent']), (req, res) => {
+  console.log('✅ Parent test route hit!');
+  res.json({
+    success: true,
+    message: 'Parent route is working!',
+    user: req.user
+  });
+});
+
 
 app.use(express.urlencoded({ 
   extended: true, 
@@ -141,6 +154,9 @@ console.log('✅ Stakeholder routes loaded: /api/admin/stakeholders');
 
 app.use('/api/super-admin/users', superAdminUserRoutes);
 console.log('✅ Super Admin routes loaded: /api/super-admin/users');
+
+app.use('/api/parents/', parentProfileRoutes);
+console.log('✅ Parent Profile routes loaded: /api/parents/');
 
 console.log('🎯 All routes loaded successfully!');
 

@@ -21,10 +21,10 @@ const gradeSchema = new mongoose.Schema({
     required: true
   },
   scores: {
-    assignments: { type: Number, min: 0, max: 100 },
-    midterm: { type: Number, min: 0, max: 100 },
-    final: { type: Number, min: 0, max: 100 },
-    practical: { type: Number, min: 0, max: 100 }
+    assignments: { type: Number, min: 0, max: 100, default: 0 },
+    midterm: { type: Number, min: 0, max: 100, default: 0 },
+    final: { type: Number, min: 0, max: 100, default: 0 },
+    practical: { type: Number, min: 0, max: 100, default: 0 }
   },
   totalScore: {
     type: Number,
@@ -33,7 +33,8 @@ const gradeSchema = new mongoose.Schema({
   },
   grade: {
     type: String,
-    enum: ["A", "B", "C", "D", "F", "Incomplete"]
+    enum: ["A", "B", "C", "D", "F", "Incomplete"],
+    default: "Incomplete"
   },
   teacher: {
     type: mongoose.Schema.Types.ObjectId,
@@ -50,29 +51,52 @@ const gradeSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Calculate totalScore before saving
-gradeSchema.pre("save", function(next) {
-  const { assignments = 0, midterm = 0, final = 0, practical = 0 } = this.scores;
-  
-  // Customize weighting as needed
-  this.totalScore = (assignments * 0.2) + (midterm * 0.3) + (final * 0.4) + (practical * 0.1);
-  
-  // Determine grade based on totalScore
-  if (this.totalScore >= 90) this.grade = "A";
-  else if (this.totalScore >= 80) this.grade = "B";
-  else if (this.totalScore >= 70) this.grade = "C";
-  else if (this.totalScore >= 60) this.grade = "D";
-  else this.grade = "F";
-  
-  next();
+// MONGOOSE 9.x COMPATIBLE PRE-SAVE MIDDLEWARE
+gradeSchema.pre("save", function() {
+  console.log('🔧 PRE-SAVE MIDDLEWARE TRIGGERED');
+  console.log('📊 Scores:', this.scores);
+  try {
+    const scores = this.scores || {};
+    const assignments = scores.assignments || 0;
+    const midterm = scores.midterm || 0;
+    const final = scores.final || 0;
+    const practical = scores.practical || 0;
+    
+    console.log('🧮 Calculating total score...');
+
+    // Calculate total score with weights
+    this.totalScore = (assignments * 0.2) + (midterm * 0.3) + (final * 0.4) + (practical * 0.1);
+    
+    // Round to 2 decimal places for cleaner display
+    this.totalScore = Math.round(this.totalScore * 100) / 100;
+
+    console.log('📈 Total Score:', this.totalScore);
+
+    // Determine grade
+    if (this.totalScore >= 90) this.grade = "A";
+    else if (this.totalScore >= 80) this.grade = "B";
+    else if (this.totalScore >= 70) this.grade = "C";
+    else if (this.totalScore >= 60) this.grade = "D";
+    else this.grade = "F";
+
+    console.log('🎓 Grade:', this.grade);
+    
+  } catch (error) {
+    console.error('❌ Pre-save error:', error);
+    throw error;
+  }
 });
 
-// Index for faster queries
+// Indexes
 gradeSchema.index({ student: 1, course: 1, academicYear: 1, term: 1 });
 gradeSchema.index({ student: 1, published: 1 });
 
-// Auto-populate student, course, and teacher
+// Auto-populate
 gradeSchema.pre('find', function() {
+  this.populate('student').populate('course').populate('teacher');
+});
+
+gradeSchema.pre('findOne', function() {
   this.populate('student').populate('course').populate('teacher');
 });
 

@@ -9,15 +9,11 @@ const getMyChildren = async (req, res) => {
     const parent = await Parent.findOne({ user: req.user.id })
       .populate({
         path: 'children',
-        select: 'firstName lastName studentId grade section dateOfBirth gender enrollmentStatus',
+        select: 'firstName lastName studentId grade section dateOfBirth gender enrollmentStatus classroom',
         populate: [
           {
             path: 'classroom',
-            select: 'name gradeLevel section'
-          },
-          {
-            path: 'homeroomTeacher',
-            select: 'profile.employeeId profile.firstName profile.lastName'
+            select: 'name gradeLevel section classTeacher'
           }
         ]
       });
@@ -64,9 +60,8 @@ const getChildDetails = async (req, res) => {
     }
 
     const child = await Student.findById(childId)
-      .populate('classroom', 'name gradeLevel section')
-      .populate('homeroomTeacher', 'profile.employeeId profile.firstName profile.lastName')
-      .populate('emergencyContacts', 'name relationship phone')
+      .populate('classroom', 'name gradeLevel section classTeacher')
+      .populate('parents', 'user')
       .select('-createdAt -updatedAt -__v');
 
     if (!child) {

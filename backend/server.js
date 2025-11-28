@@ -27,6 +27,8 @@ const clubRoutes = require('./src/routes/admin/clubRoutes');
 const stakeholderRoutes = require('./src/routes/admin/stakeholderRoutes');
 const superAdminUserRoutes = require('./src/routes/superadmin/userRoutes');
 const parentProfileRoutes = require('./src/routes/parents/profileRoutes');
+const parentChildrenRoutes = require('./src/routes/parents/childrenRoutes');
+const parentAcademicRoutes = require('./src/routes/parents/academicRoutes');
 
 // Import auth routes
 const authRoutes = require('./src/routes/auth');
@@ -157,6 +159,12 @@ console.log('✅ Super Admin routes loaded: /api/super-admin/users');
 
 app.use('/api/parents/', parentProfileRoutes);
 console.log('✅ Parent Profile routes loaded: /api/parents/');
+
+app.use('/api/parents/', parentChildrenRoutes);
+console.log('✅ Parent children routes loaded: /api/parents/children');
+
+app.use('/api/parents/', parentAcademicRoutes);
+console.log('✅ Parent academic routes loaded: /api/parents/children/:childId');
 
 console.log('🎯 All routes loaded successfully!');
 

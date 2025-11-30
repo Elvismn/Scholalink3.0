@@ -360,29 +360,43 @@ const getVehicleAnalytics = async (req, res) => {
   }
 };
 
-// Get vehicles needing service
+// Get vehicles needing service 
 const getVehiclesNeedingService = async (req, res) => {
   try {
-    const vehicles = await Vehicle.find({
-      $or: [
-        { nextServiceOdometer: { $lte: '$currentOdometer' } },
-        { 
-          _id: { 
-            $in: await MaintenanceRecord.distinct('vehicle', { 
-              nextServiceDate: { $lte: new Date() },
-              status: { $ne: 'completed' }
-            })
-          }
-        }
-      ],
+    // Get vehicles where current odometer >= next service odometer
+    const vehiclesByOdometer = await Vehicle.find({
+      $expr: {
+        $gte: ['$currentOdometer', '$nextServiceOdometer']
+      },
       status: 'active'
     }).populate('assignedDriver', 'firstName lastName');
+
+    // Get vehicles with overdue maintenance dates
+    const vehiclesByDate = await Vehicle.find({
+      _id: {
+        $in: await MaintenanceRecord.distinct('vehicle', {
+          nextServiceDate: { $lte: new Date() },
+          status: { $ne: 'completed' }
+        })
+      },
+      status: 'active'
+    }).populate('assignedDriver', 'firstName lastName');
+
+    // Combine both lists and remove duplicates
+    const allVehicles = [...vehiclesByOdometer, ...vehiclesByDate];
+    const uniqueVehicles = allVehicles.filter((vehicle, index, self) => 
+      index === self.findIndex(v => v._id.toString() === vehicle._id.toString())
+    );
 
     res.json({
       success: true,
       data: {
-        vehicles,
-        count: vehicles.length
+        vehicles: uniqueVehicles,
+        count: uniqueVehicles.length,
+        breakdown: {
+          byOdometer: vehiclesByOdometer.length,
+          byDate: vehiclesByDate.length
+        }
       }
     });
   } catch (error) {
@@ -393,7 +407,6 @@ const getVehiclesNeedingService = async (req, res) => {
     });
   }
 };
-
 module.exports = {
   getVehicles,
   getVehicle,

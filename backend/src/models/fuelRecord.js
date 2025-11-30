@@ -94,12 +94,15 @@ fuelRecordSchema.index({ date: -1 });
 fuelRecordSchema.index({ filledBy: 1 });
 fuelRecordSchema.index({ station: 1 });
 
-// Pre-save middleware to calculate totalCost if not provided
-fuelRecordSchema.pre('save', function(next) {
-  if (this.liters && this.costPerLiter && !this.totalCost) {
-    this.totalCost = this.liters * this.costPerLiter;
+// FIXED: Mongoose 9.x compatible pre-save middleware (no 'next' parameter)
+fuelRecordSchema.pre('save', function() {
+  try {
+    if (this.liters && this.costPerLiter && !this.totalCost) {
+      this.totalCost = this.liters * this.costPerLiter;
+    }
+  } catch (error) {
+    throw error;
   }
-  next();
 });
 
 // Virtual for fuel efficiency (if previous record exists)

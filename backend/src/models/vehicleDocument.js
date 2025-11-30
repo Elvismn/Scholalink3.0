@@ -165,15 +165,18 @@ vehicleDocumentSchema.virtual('requiresRenewal').get(function() {
   return this.daysUntilExpiry <= this.reminderDays;
 });
 
-// Pre-save middleware to update status based on expiry
-vehicleDocumentSchema.pre('save', function(next) {
-  if (this.expiryDate) {
-    const today = new Date();
-    if (new Date(this.expiryDate) < today && this.status !== 'renewed') {
-      this.status = 'expired';
+// FIXED: Mongoose 9.x compatible pre-save middleware (no 'next' parameter)
+vehicleDocumentSchema.pre('save', function() {
+  try {
+    if (this.expiryDate) {
+      const today = new Date();
+      if (new Date(this.expiryDate) < today && this.status !== 'renewed') {
+        this.status = 'expired';
+      }
     }
+  } catch (error) {
+    throw error;
   }
-  next();
 });
 
 // Static method to find expiring documents

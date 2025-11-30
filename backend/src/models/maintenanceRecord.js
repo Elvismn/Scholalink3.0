@@ -153,28 +153,30 @@ maintenanceRecordSchema.index({ status: 1 });
 maintenanceRecordSchema.index({ garage: 1 });
 maintenanceRecordSchema.index({ nextServiceDate: 1 });
 
-// Pre-save middleware to calculate parts total and set completion date
-maintenanceRecordSchema.pre('save', function(next) {
-  // Calculate total cost for parts if not provided
-  if (this.partsReplaced && this.partsReplaced.length > 0) {
-    this.partsReplaced.forEach(part => {
-      if (part.quantity && part.unitCost && !part.totalCost) {
-        part.totalCost = part.quantity * part.unitCost;
-      }
-    });
+// FIXED: Mongoose 9.x compatible pre-save middleware (no 'next' parameter)
+maintenanceRecordSchema.pre('save', function() {
+  try {
+    // Calculate total cost for parts if not provided
+    if (this.partsReplaced && this.partsReplaced.length > 0) {
+      this.partsReplaced.forEach(part => {
+        if (part.quantity && part.unitCost && !part.totalCost) {
+          part.totalCost = part.quantity * part.unitCost;
+        }
+      });
+    }
+    
+    // Set completion date if status is completed
+    if (this.status === 'completed' && !this.completionDate) {
+      this.completionDate = new Date();
+    }
+    
+    // Calculate next service odometer if not provided
+    if (this.odometerReading && this.serviceInterval && !this.nextServiceOdometer) {
+      this.nextServiceOdometer = this.odometerReading + this.serviceInterval;
+    }
+  } catch (error) {
+    throw error;
   }
-  
-  // Set completion date if status is completed
-  if (this.status === 'completed' && !this.completionDate) {
-    this.completionDate = new Date();
-  }
-  
-  // Calculate next service odometer if not provided
-  if (this.odometerReading && this.serviceInterval && !this.nextServiceOdometer) {
-    this.nextServiceOdometer = this.odometerReading + this.serviceInterval;
-  }
-  
-  next();
 });
 
 // Virtual for total parts cost

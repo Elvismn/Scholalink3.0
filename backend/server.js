@@ -29,6 +29,10 @@ const superAdminUserRoutes = require('./src/routes/superadmin/userRoutes');
 const parentProfileRoutes = require('./src/routes/parents/profileRoutes');
 const parentChildrenRoutes = require('./src/routes/parents/childrenRoutes');
 const parentAcademicRoutes = require('./src/routes/parents/academicRoutes');
+const vehicleRoutes = require('./src/routes/admin/vehicleRoutes');
+const fuelRecordRoutes = require('./src/routes/admin/fuelRecordRoutes');
+const maintenanceRoutes = require('./src/routes/admin/maintenanceRoutes');
+const vehicleDocumentRoutes = require('./src/routes/admin/vehicleDocumentRoutes');
 
 // Import auth routes
 const authRoutes = require('./src/routes/auth');
@@ -165,6 +169,18 @@ console.log('✅ Parent children routes loaded: /api/parents/children');
 
 app.use('/api/parents/', parentAcademicRoutes);
 console.log('✅ Parent academic routes loaded: /api/parents/children/:childId');
+
+app.use('/api/admin/vehicles', vehicleRoutes);
+console.log('✅ Vehicle routes loaded: /api/admin/vehicles');
+
+app.use('/api/admin/fuel-records', fuelRecordRoutes);
+console.log('✅ Fuel record routes loaded: /api/admin/fuel-records');
+
+app.use('/api/admin/maintenance', maintenanceRoutes);
+console.log('✅ Maintenance routes loaded: /api/admin/maintenance');
+
+app.use('/api/admin/vehicle-documents', vehicleDocumentRoutes);
+console.log('✅ Vehicle document routes loaded: /api/admin/vehicle-documents');
 
 console.log('🎯 All routes loaded successfully!');
 

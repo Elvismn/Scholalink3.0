@@ -1,35 +1,39 @@
 import { useState, useEffect } from 'react'
-import { Search, Plus, Filter, Users, GraduationCap, Edit, Trash2, Eye } from 'lucide-react'
-import { Button, Modal, Input, Select, Table, Card, showToast } from '@shared'
+import { Search, Plus, Users, GraduationCap, Edit, Trash2, RefreshCw } from 'lucide-react'
+import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
+import { GRADE_LEVELS } from '@shared'
 import { adminApi } from '../services/adminApi'
 
 const Classes = () => {
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingClass, setEditingClass] = useState(null)
+  const [teachers, setTeachers] = useState([])
   const [formData, setFormData] = useState({
-    className: '',
+    name: '',
     gradeLevel: '',
-    teacherId: '',
-    roomNumber: '',
-    capacity: '',
-    schedule: '',
-    status: 'Active'
+    classTeacher: '',
+    capacity: ''
   })
 
   useEffect(() => {
-    fetchClasses()
+    fetchData()
   }, [])
 
-  const fetchClasses = async () => {
+  const fetchData = async () => {
     setLoading(true)
     try {
-      const response = await adminApi.getClassrooms()
-      setClasses(response.data || response)
+      const [classesRes, teachersRes] = await Promise.all([
+        adminApi.getClassrooms(),
+        adminApi.getStaff()
+      ])
+      setClasses(classesRes.data || classesRes || [])
+      setTeachers(teachersRes.data || teachersRes || [])
     } catch (error) {
-      showToast.error('Failed to load classes', error.message)
+      showToast.error('Failed to load data', error.data?.message || error.message)
     } finally {
       setLoading(false)
     }
@@ -37,142 +41,120 @@ const Classes = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setSubmitting(true)
+    
     try {
-      if (editingClass) {
-        await adminApi.updateClassroom(editingClass.id, formData)
-      } else {
-        await adminApi.createClassroom(formData)
+      const classData = {
+        name: formData.name.trim(),
+        gradeLevel: formData.gradeLevel,
+        classTeacher: formData.classTeacher,
+        capacity: parseInt(formData.capacity) || 30
       }
+
+      if (editingClass) {
+        await adminApi.updateClassroom(editingClass._id, classData)
+        showToast.success('Class updated successfully')
+      } else {
+        await adminApi.createClassroom(classData)
+        showToast.success('Class created successfully')
+      }
+      
       setIsModalOpen(false)
       setEditingClass(null)
-      setFormData({
-        className: '',
-        gradeLevel: '',
-        teacherId: '',
-        roomNumber: '',
-        capacity: '',
-        schedule: '',
-        status: 'Active'
-      })
-      fetchClasses()
+      setFormData({ name: '', gradeLevel: '', classTeacher: '', capacity: '' })
+      fetchData()
     } catch (error) {
-      showToast.error('Operation failed', error.message)
+      showToast.error('Operation failed', error.data?.message || error.message)
+    } finally {
+      setSubmitting(false)
     }
-  }
-
-  const handleEdit = (classItem) => {
-    setEditingClass(classItem)
-    setFormData({
-      className: classItem.className || '',
-      gradeLevel: classItem.gradeLevel || '',
-      teacherId: classItem.teacherId || '',
-      roomNumber: classItem.roomNumber || '',
-      capacity: classItem.capacity || '',
-      schedule: classItem.schedule || '',
-      status: classItem.status || 'Active'
-    })
-    setIsModalOpen(true)
   }
 
   const handleDelete = async (classId) => {
     if (window.confirm('Are you sure you want to delete this class?')) {
       try {
         await adminApi.deleteClassroom(classId)
-        fetchClasses()
+        showToast.success('Class deleted successfully')
+        fetchData()
       } catch (error) {
-        showToast.error('Failed to delete class', error.message)
+        showToast.error('Failed to delete class', error.data?.message || error.message)
       }
     }
   }
 
-  const filteredClasses = classes.filter(classItem => {
-    if (!searchTerm) return true
-    const searchLower = searchTerm.toLowerCase()
-    return (
-      (classItem.className?.toLowerCase().includes(searchLower)) ||
-      (classItem.gradeLevel?.toLowerCase().includes(searchLower)) ||
-      (classItem.roomNumber?.toLowerCase().includes(searchLower)) ||
-      (classItem.teacherName?.toLowerCase().includes(searchLower))
-    )
-  })
-
   const columns = [
     {
-      key: 'class',
-      title: 'Class Information',
-      render: (_, classItem) => (
+      key: 'name',
+      title: 'Class Name',
+      render: (name, cls) => (
         <div className="flex items-center">
           <div className="bg-blue-100 rounded-lg p-2 mr-3">
             <GraduationCap className="h-5 w-5 text-blue-600" />
           </div>
           <div>
-            <div className="font-medium text-gray-900">{classItem.className}</div>
-            <div className="text-sm text-gray-500">
-              Grade {classItem.gradeLevel} • Room {classItem.roomNumber}
-            </div>
+            <div className="font-medium text-gray-900">{name}</div>
+            <div className="text-sm text-gray-500">Grade: {cls.gradeLevel}</div>
           </div>
         </div>
       )
     },
     {
-      key: 'teacher',
-      title: 'Teacher',
-      render: (_, classItem) => (
-        <div className="text-gray-900">{classItem.teacherName || 'Not assigned'}</div>
+      key: 'classTeacher',
+      title: 'Class Teacher',
+      render: (teacher, cls) => (
+        <div>
+          <div className="font-medium text-gray-900">
+            {teacher?.firstName} {teacher?.lastName}
+          </div>
+          <div className="text-sm text-gray-500">{teacher?.position}</div>
+        </div>
       )
     },
     {
       key: 'students',
       title: 'Students',
-      render: (_, classItem) => (
-        <div className="flex items-center gap-1">
-          <Users className="h-4 w-4 text-gray-400" />
-          <span>{classItem.studentCount || 0} / {classItem.capacity || 30}</span>
+      render: (students) => (
+        <div className="flex items-center">
+          <Users className="w-4 h-4 text-gray-400 mr-2" />
+          <span className="font-medium">{students?.length || 0}</span>
+          <span className="text-sm text-gray-500 ml-1">students</span>
         </div>
       )
     },
     {
-      key: 'schedule',
-      title: 'Schedule',
-      render: (schedule) => <div className="text-gray-900">{schedule || 'Not set'}</div>
-    },
-    {
-      key: 'status',
-      title: 'Status',
-      render: (status) => (
-        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-          status === 'Active'
-            ? 'bg-green-100 text-green-800'
-            : 'bg-red-100 text-red-800'
-        }`}>
-          {status}
-        </span>
+      key: 'capacity',
+      title: 'Capacity',
+      render: (capacity) => (
+        <div className="text-gray-900">{capacity}</div>
       )
     },
     {
       key: 'actions',
       title: 'Actions',
-      render: (_, classItem) => (
+      render: (_, cls) => (
         <div className="flex gap-2">
           <button
-            onClick={() => handleEdit(classItem)}
+            onClick={() => {
+              setEditingClass(cls)
+              setFormData({
+                name: cls.name || '',
+                gradeLevel: cls.gradeLevel || '',
+                classTeacher: cls.classTeacher?._id || '',
+                capacity: cls.capacity?.toString() || ''
+              })
+              setIsModalOpen(true)
+            }}
             className="p-1 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded"
             title="Edit"
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
-            onClick={() => handleDelete(classItem.id)}
+            onClick={() => handleDelete(cls._id)}
             className="p-1 text-red-600 hover:text-red-900 hover:bg-red-50 rounded"
             title="Delete"
           >
             <Trash2 className="w-4 h-4" />
-          </button>
-          <button 
-            className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded"
-            title="View Details"
-          >
-            <Eye className="w-4 h-4" />
           </button>
         </div>
       )
@@ -183,79 +165,125 @@ const Classes = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Class Management</h1>
-          <p className="text-gray-600">Manage classrooms and class schedules</p>
+          <h1 className="text-2xl font-bold text-gray-900">Classes</h1>
+          <p className="text-gray-600">Manage classrooms and class assignments</p>
         </div>
-        <Button
-          onClick={() => {
-            setEditingClass(null)
-            setFormData({
-              className: '',
-              gradeLevel: '',
-              teacherId: '',
-              roomNumber: '',
-              capacity: '',
-              schedule: '',
-              status: 'Active'
-            })
-            setIsModalOpen(true)
-          }}
-          className="flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add Class
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={fetchData}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingClass(null)
+              setFormData({ name: '', gradeLevel: '', classTeacher: '', capacity: '' })
+              setIsModalOpen(true)
+            }}
+            className="flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Class
+          </Button>
+        </div>
       </div>
 
-      {/* Search and Filter */}
-      <Card>
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search classes by name, grade, or teacher..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3">
+              <GraduationCap className="h-6 w-6 text-white" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm text-gray-600">Total Classes</p>
+              <p className="text-2xl font-bold">{classes.length}</p>
             </div>
           </div>
-          <Select
-            placeholder="Filter by grade"
-            options={[
-              { value: 'all', label: 'All Grades' },
-              { value: '1', label: 'Grade 1' },
-              { value: '2', label: 'Grade 2' },
-              { value: '3', label: 'Grade 3' },
-              { value: '4', label: 'Grade 4' },
-              { value: '5', label: 'Grade 5' },
-              { value: '6', label: 'Grade 6' },
-              { value: '7', label: 'Grade 7' },
-              { value: '8', label: 'Grade 8' }
-            ]}
-            className="w-full md:w-48"
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3">
+              <Users className="h-6 w-6 text-white" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm text-gray-600">Total Students</p>
+              <p className="text-2xl font-bold">
+                {classes.reduce((total, cls) => total + (cls.students?.length || 0), 0)}
+              </p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3">
+              <Users className="h-6 w-6 text-white" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm text-gray-600">Class Teachers</p>
+              <p className="text-2xl font-bold">
+                {[...new Set(classes.map(c => c.classTeacher?._id).filter(Boolean))].length}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Search */}
+      <Card>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <input
+            type="text"
+            placeholder="Search classes by name, grade, or teacher..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <Button variant="secondary" className="flex items-center gap-2">
-            <Filter className="w-4 h-4" />
-            More Filters
-          </Button>
         </div>
       </Card>
 
       {/* Classes Table */}
       <Card>
-        <Table
-          columns={columns}
-          data={filteredClasses}
-          keyField="id"
-          loading={loading}
-          emptyMessage="No classes found"
-        />
+        {loading ? (
+          <div className="py-12 text-center">
+            <Loader size="lg" />
+            <p className="mt-4 text-gray-600">Loading classes...</p>
+          </div>
+        ) : classes.length === 0 ? (
+          <div className="py-12 text-center">
+            <GraduationCap className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500">No classes found</p>
+            <Button
+              onClick={() => {
+                setFormData({ name: '', gradeLevel: '', classTeacher: '', capacity: '' })
+                setIsModalOpen(true)
+              }}
+              className="mt-4"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create First Class
+            </Button>
+          </div>
+        ) : (
+          <Table
+            columns={columns}
+            data={classes.filter(cls => 
+              !searchTerm || 
+              cls.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              cls.gradeLevel?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              `${cls.classTeacher?.firstName} ${cls.classTeacher?.lastName}`.toLowerCase().includes(searchTerm.toLowerCase())
+            )}
+            keyField="_id"
+            emptyMessage="No classes match your search"
+          />
+        )}
       </Card>
 
-      {/* Add/Edit Class Modal */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
@@ -270,72 +298,47 @@ const Classes = () => {
             <Input
               label="Class Name"
               required
-              placeholder="e.g., Mathematics, Science"
-              value={formData.className}
-              onChange={(e) => setFormData({...formData, className: e.target.value})}
+              placeholder="e.g., Form 1A"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
             />
             <Select
               label="Grade Level"
               required
-              options={[
-                { value: '1', label: 'Grade 1' },
-                { value: '2', label: 'Grade 2' },
-                { value: '3', label: 'Grade 3' },
-                { value: '4', label: 'Grade 4' },
-                { value: '5', label: 'Grade 5' },
-                { value: '6', label: 'Grade 6' },
-                { value: '7', label: 'Grade 7' },
-                { value: '8', label: 'Grade 8' }
-              ]}
+              options={GRADE_LEVELS.map(grade => ({ value: grade, label: grade }))}
               value={formData.gradeLevel}
               onChange={(e) => setFormData({...formData, gradeLevel: e.target.value})}
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Room Number"
-              required
-              value={formData.roomNumber}
-              onChange={(e) => setFormData({...formData, roomNumber: e.target.value})}
-            />
-            <Input
-              label="Capacity"
-              type="number"
-              required
-              value={formData.capacity}
-              onChange={(e) => setFormData({...formData, capacity: e.target.value})}
-            />
-          </div>
-
-          <Input
-            label="Teacher ID"
-            value={formData.teacherId}
-            onChange={(e) => setFormData({...formData, teacherId: e.target.value})}
-            placeholder="Teacher's employee ID"
-          />
-
-          <Input
-            label="Schedule"
-            value={formData.schedule}
-            onChange={(e) => setFormData({...formData, schedule: e.target.value})}
-            placeholder="e.g., Mon-Wed-Fri 8:00-10:00"
-          />
-
           <Select
-            label="Status"
+            label="Class Teacher"
             options={[
-              { value: 'Active', label: 'Active' },
-              { value: 'Inactive', label: 'Inactive' },
-              { value: 'Full', label: 'Full' }
+              { value: '', label: 'Select a teacher' },
+              ...teachers.map(teacher => ({
+                value: teacher._id,
+                label: `${teacher.user?.firstName || ''} ${teacher.user?.lastName || ''} - ${teacher.position || ''}`
+              }))
             ]}
-            value={formData.status}
-            onChange={(e) => setFormData({...formData, status: e.target.value})}
+            value={formData.classTeacher}
+            onChange={(e) => setFormData({...formData, classTeacher: e.target.value})}
+          />
+
+          <Input
+            label="Capacity"
+            type="number"
+            required
+            min="1"
+            max="60"
+            placeholder="Maximum number of students"
+            value={formData.capacity}
+            onChange={(e) => setFormData({...formData, capacity: e.target.value})}
           />
 
           <div className="pt-4 flex justify-end gap-3">
             <Button
               variant="secondary"
+              type="button"
               onClick={() => {
                 setIsModalOpen(false)
                 setEditingClass(null)
@@ -343,7 +346,7 @@ const Classes = () => {
             >
               Cancel
             </Button>
-            <Button type="submit">
+            <Button type="submit" loading={submitting}>
               {editingClass ? 'Update Class' : 'Add Class'}
             </Button>
           </div>

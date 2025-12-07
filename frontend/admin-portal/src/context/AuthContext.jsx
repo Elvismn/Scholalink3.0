@@ -33,17 +33,16 @@ export const AuthProvider = ({ children }) => {
     checkAuth()
   }, [])
 
-  // Redirect to login if not authenticated on protected routes
+  // Remove or simplify the navigation useEffect to prevent issues
   useEffect(() => {
     if (!loading) {
       const isLoginPage = location.pathname === '/login'
-      const isPublicPage = location.pathname === '/login'
       
-      if (!user && !isPublicPage) {
-        navigate('/login', { replace: true })
-      } else if (user && isLoginPage) {
+      // Only redirect if we're on login page and already logged in
+      if (user && isLoginPage) {
         navigate('/dashboard', { replace: true })
       }
+      // Don't auto-redirect from protected routes - let components handle it
     }
   }, [user, loading, location.pathname, navigate])
 
@@ -82,12 +81,13 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
-    updateUser
+    updateUser,
+    isAuthenticated: !!user
   }
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   )
 }

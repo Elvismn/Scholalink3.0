@@ -1,592 +1,608 @@
-// Comprehensive Admin API Service - ALL admin CRUD operations for ALL models
-import { showToast } from '@shared';
+import { API_ENDPOINTS } from '@shared/utils/apiService'
 
 class AdminApi {
   constructor(baseURL) {
-    this.baseURL = baseURL || (import.meta.env.VITE_API_URL || 'http://localhost:5000/api');
+    this.baseURL = baseURL || (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
   }
 
-  // Get auth headers
   getHeaders() {
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-    };
-
-    const token = localStorage.getItem('token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
     }
 
-    return headers;
+    const token = localStorage.getItem('token')
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    return headers
   }
 
-  // Generic request method
   async request(endpoint, options = {}) {
-    const { method = 'GET', data = null } = options;
+    const { method = 'GET', data = null } = options
     
     const config = {
       method,
       headers: this.getHeaders(),
-    };
+    }
 
     if (data) {
-      config.body = JSON.stringify(data);
+      config.body = JSON.stringify(data)
     }
 
-    const url = `${this.baseURL}${endpoint}`;
+    const url = `${this.baseURL}${endpoint}`
     
-    console.log(`👑 ADMIN API: ${method} ${url}`, data || '');
+    console.log(`🔧 ADMIN API: ${method} ${url}`)
 
     try {
-      const response = await fetch(url, config);
-      const responseData = await response.json();
+      const response = await fetch(url, config)
+      const responseData = await response.json()
 
       if (!response.ok) {
-        const error = new Error(responseData.error || responseData.message || `HTTP ${response.status}`);
-        error.status = response.status;
-        error.data = responseData;
-        throw error;
+        const error = new Error(responseData.error || responseData.message || `HTTP ${response.status}`)
+        error.status = response.status
+        error.data = responseData
+        throw error
       }
 
-      console.log(`✅ ADMIN API Success: ${method} ${endpoint}`);
-      return responseData;
+      return responseData
     } catch (error) {
-      console.error(`❌ ADMIN API Error: ${method} ${endpoint}`, error);
-      
-      // Auto logout on 401
-      if (error.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
-      }
-      
-      showToast.error('Operation failed', error.data?.message || error.message);
-      throw error;
+      console.error(`❌ ADMIN API Error: ${method} ${endpoint}`, error)
+      throw error
     }
   }
 
-  // Helper for query params
-  buildQuery(endpoint, params = {}) {
-    const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        query.append(key, value);
-      }
-    });
-    const queryString = query.toString();
-    return queryString ? `${endpoint}?${queryString}` : endpoint;
-  }
-
-  // ==================== STUDENTS ====================
+  // Student CRUD
   async getStudents(params = {}) {
-    return this.request(this.buildQuery('/admin/students', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.STUDENTS}?${query}` : API_ENDPOINTS.ADMIN.STUDENTS
+    return this.request(endpoint)
   }
 
   async getStudent(id) {
-    return this.request(`/admin/students/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.STUDENT_BY_ID(id))
   }
 
   async createStudent(data) {
-    const result = await this.request('/admin/students', { method: 'POST', data });
-    showToast.success('Student created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.STUDENTS, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateStudent(id, data) {
-    const result = await this.request(`/admin/students/${id}`, { method: 'PUT', data });
-    showToast.success('Student updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.STUDENT_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteStudent(id) {
-    const result = await this.request(`/admin/students/${id}`, { method: 'DELETE' });
-    showToast.success('Student deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.STUDENT_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== VEHICLES ====================
+  // Vehicle CRUD
   async getVehicles(params = {}) {
-    return this.request(this.buildQuery('/admin/vehicles', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.VEHICLES}?${query}` : API_ENDPOINTS.ADMIN.VEHICLES
+    return this.request(endpoint)
   }
 
   async getVehicle(id) {
-    return this.request(`/admin/vehicles/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_BY_ID(id))
   }
 
   async createVehicle(data) {
-    const result = await this.request('/admin/vehicles', { method: 'POST', data });
-    showToast.success('Vehicle created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLES, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateVehicle(id, data) {
-    const result = await this.request(`/admin/vehicles/${id}`, { method: 'PUT', data });
-    showToast.success('Vehicle updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteVehicle(id) {
-    const result = await this.request(`/admin/vehicles/${id}`, { method: 'DELETE' });
-    showToast.success('Vehicle deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // Vehicle sub-resources
-  async getFuelRecords(vehicleId = null) {
-    const endpoint = vehicleId 
-      ? `/admin/fuel-records/vehicle/${vehicleId}`
-      : '/admin/fuel-records';
-    return this.request(endpoint);
-  }
-
-  async createFuelRecord(data) {
-    const result = await this.request('/admin/fuel-records', { method: 'POST', data });
-    showToast.success('Fuel record added');
-    return result;
-  }
-
-  async updateFuelRecord(id, data) {
-    const result = await this.request(`/admin/fuel-records/${id}`, { method: 'PUT', data });
-    showToast.success('Fuel record updated');
-    return result;
-  }
-
-  async deleteFuelRecord(id) {
-    const result = await this.request(`/admin/fuel-records/${id}`, { method: 'DELETE' });
-    showToast.success('Fuel record deleted');
-    return result;
-  }
-
-  async getMaintenanceRecords(vehicleId = null) {
-    const endpoint = vehicleId 
-      ? `/admin/maintenance/vehicle/${vehicleId}`
-      : '/admin/maintenance';
-    return this.request(endpoint);
-  }
-
-  async createMaintenanceRecord(data) {
-    const result = await this.request('/admin/maintenance', { method: 'POST', data });
-    showToast.success('Maintenance record added');
-    return result;
-  }
-
-  async updateMaintenanceRecord(id, data) {
-    const result = await this.request(`/admin/maintenance/${id}`, { method: 'PUT', data });
-    showToast.success('Maintenance record updated');
-    return result;
-  }
-
-  async deleteMaintenanceRecord(id) {
-    const result = await this.request(`/admin/maintenance/${id}`, { method: 'DELETE' });
-    showToast.success('Maintenance record deleted');
-    return result;
-  }
-
-  async getVehicleDocuments(vehicleId = null) {
-    const endpoint = vehicleId 
-      ? `/admin/vehicle-documents/vehicle/${vehicleId}`
-      : '/admin/vehicle-documents';
-    return this.request(endpoint);
-  }
-
-  async createVehicleDocument(data) {
-    const result = await this.request('/admin/vehicle-documents', { method: 'POST', data });
-    showToast.success('Document uploaded');
-    return result;
-  }
-
-  async updateVehicleDocument(id, data) {
-    const result = await this.request(`/admin/vehicle-documents/${id}`, { method: 'PUT', data });
-    showToast.success('Document updated');
-    return result;
-  }
-
-  async deleteVehicleDocument(id) {
-    const result = await this.request(`/admin/vehicle-documents/${id}`, { method: 'DELETE' });
-    showToast.success('Document deleted');
-    return result;
-  }
-
-  // ==================== PARENTS ====================
+  // Parent CRUD
   async getParents(params = {}) {
-    return this.request(this.buildQuery('/admin/parents', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.PARENTS}?${query}` : API_ENDPOINTS.ADMIN.PARENTS
+    return this.request(endpoint)
   }
 
   async getParent(id) {
-    return this.request(`/admin/parents/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.PARENT_BY_ID(id))
   }
 
   async createParent(data) {
-    const result = await this.request('/admin/parents', { method: 'POST', data });
-    showToast.success('Parent created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.PARENTS, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateParent(id, data) {
-    const result = await this.request(`/admin/parents/${id}`, { method: 'PUT', data });
-    showToast.success('Parent updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.PARENT_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteParent(id) {
-    const result = await this.request(`/admin/parents/${id}`, { method: 'DELETE' });
-    showToast.success('Parent deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.PARENT_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== STAFF ====================
+  // Staff CRUD
   async getStaff(params = {}) {
-    return this.request(this.buildQuery('/admin/staff', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.STAFF}?${query}` : API_ENDPOINTS.ADMIN.STAFF
+    return this.request(endpoint)
   }
 
-  async getStaffMember(id) {
-    return this.request(`/admin/staff/${id}`);
+  async getOneStaff(id) {
+    return this.request(API_ENDPOINTS.ADMIN.STAFF_BY_ID(id))
   }
 
   async createStaff(data) {
-    const result = await this.request('/admin/staff', { method: 'POST', data });
-    showToast.success('Staff member created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.STAFF, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateStaff(id, data) {
-    const result = await this.request(`/admin/staff/${id}`, { method: 'PUT', data });
-    showToast.success('Staff member updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.STAFF_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteStaff(id) {
-    const result = await this.request(`/admin/staff/${id}`, { method: 'DELETE' });
-    showToast.success('Staff member deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.STAFF_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== CLASSROOMS ====================
+  // Classroom CRUD
   async getClassrooms(params = {}) {
-    return this.request(this.buildQuery('/admin/classrooms', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.CLASSROOMS}?${query}` : API_ENDPOINTS.ADMIN.CLASSROOMS
+    return this.request(endpoint)
   }
 
   async getClassroom(id) {
-    return this.request(`/admin/classrooms/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.CLASSROOM_BY_ID(id))
   }
 
   async createClassroom(data) {
-    const result = await this.request('/admin/classrooms', { method: 'POST', data });
-    showToast.success('Classroom created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CLASSROOMS, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateClassroom(id, data) {
-    const result = await this.request(`/admin/classrooms/${id}`, { method: 'PUT', data });
-    showToast.success('Classroom updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CLASSROOM_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteClassroom(id) {
-    const result = await this.request(`/admin/classrooms/${id}`, { method: 'DELETE' });
-    showToast.success('Classroom deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CLASSROOM_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== GRADES ====================
+  // Grade CRUD
   async getGrades(params = {}) {
-    return this.request(this.buildQuery('/admin/grades', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.GRADES}?${query}` : API_ENDPOINTS.ADMIN.GRADES
+    return this.request(endpoint)
   }
 
   async getGrade(id) {
-    return this.request(`/admin/grades/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id))
   }
 
   async createGrade(data) {
-    const result = await this.request('/admin/grades', { method: 'POST', data });
-    showToast.success('Grade created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.GRADES, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateGrade(id, data) {
-    const result = await this.request(`/admin/grades/${id}`, { method: 'PUT', data });
-    showToast.success('Grade updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteGrade(id) {
-    const result = await this.request(`/admin/grades/${id}`, { method: 'DELETE' });
-    showToast.success('Grade deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== COURSES ====================
-  async getCourses(params = {}) {
-    return this.request(this.buildQuery('/admin/courses', params));
-  }
-
-  async getCourse(id) {
-    return this.request(`/admin/courses/${id}`);
-  }
-
-  async createCourse(data) {
-    const result = await this.request('/admin/courses', { method: 'POST', data });
-    showToast.success('Course created successfully');
-    return result;
-  }
-
-  async updateCourse(id, data) {
-    const result = await this.request(`/admin/courses/${id}`, { method: 'PUT', data });
-    showToast.success('Course updated successfully');
-    return result;
-  }
-
-  async deleteCourse(id) {
-    const result = await this.request(`/admin/courses/${id}`, { method: 'DELETE' });
-    showToast.success('Course deleted successfully');
-    return result;
-  }
-
-  // ==================== DEPARTMENTS ====================
+  // Department CRUD
   async getDepartments(params = {}) {
-    return this.request(this.buildQuery('/admin/departments', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.DEPARTMENTS}?${query}` : API_ENDPOINTS.ADMIN.DEPARTMENTS
+    return this.request(endpoint)
   }
 
   async getDepartment(id) {
-    return this.request(`/admin/departments/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.DEPARTMENT_BY_ID(id))
   }
 
   async createDepartment(data) {
-    const result = await this.request('/admin/departments', { method: 'POST', data });
-    showToast.success('Department created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.DEPARTMENTS, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateDepartment(id, data) {
-    const result = await this.request(`/admin/departments/${id}`, { method: 'PUT', data });
-    showToast.success('Department updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.DEPARTMENT_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteDepartment(id) {
-    const result = await this.request(`/admin/departments/${id}`, { method: 'DELETE' });
-    showToast.success('Department deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.DEPARTMENT_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== INVENTORY ====================
-  async getInventoryItems(params = {}) {
-    return this.request(this.buildQuery('/admin/inventory', params));
+  // Course CRUD
+  async getCourses(params = {}) {
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.COURSES}?${query}` : API_ENDPOINTS.ADMIN.COURSES
+    return this.request(endpoint)
   }
 
-  async getInventoryItem(id) {
-    return this.request(`/admin/inventory/${id}`);
+  async getCourse(id) {
+    return this.request(API_ENDPOINTS.ADMIN.COURSE_BY_ID(id))
   }
 
-  async createInventoryItem(data) {
-    const result = await this.request('/admin/inventory', { method: 'POST', data });
-    showToast.success('Inventory item created successfully');
-    return result;
+  async createCourse(data) {
+    return this.request(API_ENDPOINTS.ADMIN.COURSES, {
+      method: 'POST',
+      data
+    })
   }
 
-  async updateInventoryItem(id, data) {
-    const result = await this.request(`/admin/inventory/${id}`, { method: 'PUT', data });
-    showToast.success('Inventory item updated successfully');
-    return result;
+  async updateCourse(id, data) {
+    return this.request(API_ENDPOINTS.ADMIN.COURSE_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
-  async deleteInventoryItem(id) {
-    const result = await this.request(`/admin/inventory/${id}`, { method: 'DELETE' });
-    showToast.success('Inventory item deleted successfully');
-    return result;
+  async deleteCourse(id) {
+    return this.request(API_ENDPOINTS.ADMIN.COURSE_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== CURRICULUMS ====================
+  // Curriculum CRUD
   async getCurriculums(params = {}) {
-    return this.request(this.buildQuery('/admin/curriculums', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.CURRICULUMS}?${query}` : API_ENDPOINTS.ADMIN.CURRICULUMS
+    return this.request(endpoint)
   }
 
   async getCurriculum(id) {
-    return this.request(`/admin/curriculums/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.CURRICULUM_BY_ID(id))
   }
 
   async createCurriculum(data) {
-    const result = await this.request('/admin/curriculums', { method: 'POST', data });
-    showToast.success('Curriculum created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CURRICULUMS, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateCurriculum(id, data) {
-    const result = await this.request(`/admin/curriculums/${id}`, { method: 'PUT', data });
-    showToast.success('Curriculum updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CURRICULUM_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteCurriculum(id) {
-    const result = await this.request(`/admin/curriculums/${id}`, { method: 'DELETE' });
-    showToast.success('Curriculum deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CURRICULUM_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== CLUBS ====================
+  // Club CRUD
   async getClubs(params = {}) {
-    return this.request(this.buildQuery('/admin/clubs', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.CLUBS}?${query}` : API_ENDPOINTS.ADMIN.CLUBS
+    return this.request(endpoint)
   }
 
   async getClub(id) {
-    return this.request(`/admin/clubs/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.CLUB_BY_ID(id))
   }
 
   async createClub(data) {
-    const result = await this.request('/admin/clubs', { method: 'POST', data });
-    showToast.success('Club created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CLUBS, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateClub(id, data) {
-    const result = await this.request(`/admin/clubs/${id}`, { method: 'PUT', data });
-    showToast.success('Club updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CLUB_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteClub(id) {
-    const result = await this.request(`/admin/clubs/${id}`, { method: 'DELETE' });
-    showToast.success('Club deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.CLUB_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== STAKEHOLDERS ====================
-  async getStakeholders(params = {}) {
-    return this.request(this.buildQuery('/admin/stakeholders', params));
-  }
-
-  async getStakeholder(id) {
-    return this.request(`/admin/stakeholders/${id}`);
-  }
-
-  async createStakeholder(data) {
-    const result = await this.request('/admin/stakeholders', { method: 'POST', data });
-    showToast.success('Stakeholder created successfully');
-    return result;
-  }
-
-  async updateStakeholder(id, data) {
-    const result = await this.request(`/admin/stakeholders/${id}`, { method: 'PUT', data });
-    showToast.success('Stakeholder updated successfully');
-    return result;
-  }
-
-  async deleteStakeholder(id) {
-    const result = await this.request(`/admin/stakeholders/${id}`, { method: 'DELETE' });
-    showToast.success('Stakeholder deleted successfully');
-    return result;
-  }
-
-  // ==================== USERS ====================
+  // Users CRUD
   async getUsers(params = {}) {
-    return this.request(this.buildQuery('/admin/users', params));
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.USERS}?${query}` : API_ENDPOINTS.ADMIN.USERS
+    return this.request(endpoint)
   }
 
   async getUser(id) {
-    return this.request(`/admin/users/${id}`);
+    return this.request(API_ENDPOINTS.ADMIN.USER_BY_ID(id))
   }
 
   async createUser(data) {
-    const result = await this.request('/admin/users', { method: 'POST', data });
-    showToast.success('User created successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.USERS, {
+      method: 'POST',
+      data
+    })
   }
 
   async updateUser(id, data) {
-    const result = await this.request(`/admin/users/${id}`, { method: 'PUT', data });
-    showToast.success('User updated successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.USER_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
   async deleteUser(id) {
-    const result = await this.request(`/admin/users/${id}`, { method: 'DELETE' });
-    showToast.success('User deleted successfully');
-    return result;
+    return this.request(API_ENDPOINTS.ADMIN.USER_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  // ==================== DASHBOARD & STATS ====================
+  // Dashboard Stats
   async getDashboardStats() {
-    return this.request('/admin/dashboard/stats');
+    return this.request('/admin/dashboard')
   }
 
-  async getRecentActivity() {
-    return this.request('/admin/dashboard/activity');
+  // Inventory CRUD
+  async getInventory(params = {}) {
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.INVENTORY}?${query}` : API_ENDPOINTS.ADMIN.INVENTORY
+    return this.request(endpoint)
   }
 
-  // ==================== BULK OPERATIONS ====================
-  async bulkUpdateVehicleDocuments(data) {
-    const result = await this.request('/admin/vehicle-documents/bulk-update', { method: 'POST', data });
-    showToast.success('Documents updated in bulk');
-    return result;
+  async getInventoryItem(id) {
+    return this.request(API_ENDPOINTS.ADMIN.INVENTORY_BY_ID(id))
   }
 
-  async renewDocument(id) {
-    const result = await this.request(`/admin/vehicle-documents/${id}/renew`, { method: 'PATCH' });
-    showToast.success('Document renewed');
-    return result;
+  async createInventory(data) {
+    return this.request(API_ENDPOINTS.ADMIN.INVENTORY, {
+      method: 'POST',
+      data
+    })
   }
 
-  async verifyDocument(id) {
-    const result = await this.request(`/admin/vehicle-documents/${id}/verify`, { method: 'PATCH' });
-    showToast.success('Document verified');
-    return result;
+  async updateInventory(id, data) {
+    return this.request(API_ENDPOINTS.ADMIN.INVENTORY_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
-  async verifyFuelRecord(id) {
-    const result = await this.request(`/admin/fuel-records/${id}/verify`, { method: 'PATCH' });
-    showToast.success('Fuel record verified');
-    return result;
+  async deleteInventory(id) {
+    return this.request(API_ENDPOINTS.ADMIN.INVENTORY_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  async verifyMaintenanceRecord(id) {
-    const result = await this.request(`/admin/maintenance/${id}/verify`, { method: 'PATCH' });
-    showToast.success('Maintenance record verified');
-    return result;
+  // Stakeholder CRUD
+  async getStakeholders(params = {}) {
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.STAKEHOLDERS}?${query}` : API_ENDPOINTS.ADMIN.STAKEHOLDERS
+    return this.request(endpoint)
   }
 
-  // ==================== ANALYTICS ====================
-  async getVehicleAnalytics(vehicleId) {
-    return this.request(`/admin/vehicles/${vehicleId}/analytics`);
+  async getStakeholder(id) {
+    return this.request(API_ENDPOINTS.ADMIN.STAKEHOLDER_BY_ID(id))
   }
 
-  async getFuelAnalytics(vehicleId) {
-    return this.request(`/admin/fuel-records/vehicle/${vehicleId}/analytics`);
+  async createStakeholder(data) {
+    return this.request(API_ENDPOINTS.ADMIN.STAKEHOLDERS, {
+      method: 'POST',
+      data
+    })
   }
 
-  async getMaintenanceAnalytics(vehicleId) {
-    return this.request(`/admin/maintenance/vehicle/${vehicleId}/analytics`);
+  async updateStakeholder(id, data) {
+    return this.request(API_ENDPOINTS.ADMIN.STAKEHOLDER_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
   }
 
-  async getMaintenanceForecast(vehicleId) {
-    return this.request(`/admin/maintenance/vehicle/${vehicleId}/forecast`);
+  async deleteStakeholder(id) {
+    return this.request(API_ENDPOINTS.ADMIN.STAKEHOLDER_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
-  async getDocumentAnalytics(vehicleId) {
-    return this.request(`/admin/vehicle-documents/vehicle/${vehicleId}/analytics`);
+  // Fuel Records CRUD
+  async getFuelRecords(params = {}) {
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.FUEL_RECORDS}?${query}` : API_ENDPOINTS.ADMIN.FUEL_RECORDS
+    return this.request(endpoint)
   }
 
-  // ==================== SPECIAL QUERIES ====================
-  async getVehiclesNeedingService() {
-    return this.request('/admin/vehicles/needing-service');
+  async getFuelRecord(id) {
+    return this.request(API_ENDPOINTS.ADMIN.FUEL_RECORD_BY_ID(id))
   }
 
-  async getUpcomingMaintenance() {
-    return this.request('/admin/maintenance/upcoming');
+  async createFuelRecord(data) {
+    return this.request(API_ENDPOINTS.ADMIN.FUEL_RECORDS, {
+      method: 'POST',
+      data
+    })
+  }
+
+  async updateFuelRecord(id, data) {
+    return this.request(API_ENDPOINTS.ADMIN.FUEL_RECORD_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
+  }
+
+  async deleteFuelRecord(id) {
+    return this.request(API_ENDPOINTS.ADMIN.FUEL_RECORD_BY_ID(id), {
+      method: 'DELETE'
+    })
   }
 
   async getUnverifiedFuelRecords() {
-    return this.request('/admin/fuel-records/unverified');
+    return this.request(API_ENDPOINTS.ADMIN.UNVERIFIED_FUEL_RECORDS)
+  }
+
+  async getFuelAnalytics(vehicleId) {
+    return this.request(API_ENDPOINTS.ADMIN.FUEL_ANALYTICS(vehicleId))
+  }
+
+  // Maintenance Records CRUD
+  async getMaintenanceRecords(params = {}) {
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.MAINTENANCE}?${query}` : API_ENDPOINTS.ADMIN.MAINTENANCE
+    return this.request(endpoint)
+  }
+
+  async getMaintenanceRecord(id) {
+    return this.request(API_ENDPOINTS.ADMIN.MAINTENANCE_BY_ID(id))
+  }
+
+  async createMaintenanceRecord(data) {
+    return this.request(API_ENDPOINTS.ADMIN.MAINTENANCE, {
+      method: 'POST',
+      data
+    })
+  }
+
+  async updateMaintenanceRecord(id, data) {
+    return this.request(API_ENDPOINTS.ADMIN.MAINTENANCE_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
+  }
+
+  async deleteMaintenanceRecord(id) {
+    return this.request(API_ENDPOINTS.ADMIN.MAINTENANCE_BY_ID(id), {
+      method: 'DELETE'
+    })
+  }
+
+  async getUpcomingMaintenance() {
+    return this.request(API_ENDPOINTS.ADMIN.UPCOMING_MAINTENANCE)
+  }
+
+  async getMaintenanceAnalytics(vehicleId) {
+    return this.request(API_ENDPOINTS.ADMIN.MAINTENANCE_ANALYTICS(vehicleId))
+  }
+
+  // Vehicle Documents CRUD
+  async getVehicleDocuments(params = {}) {
+    const query = new URLSearchParams(params).toString()
+    const endpoint = query ? `${API_ENDPOINTS.ADMIN.VEHICLE_DOCUMENTS}?${query}` : API_ENDPOINTS.ADMIN.VEHICLE_DOCUMENTS
+    return this.request(endpoint)
+  }
+
+  async getVehicleDocument(id) {
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_DOCUMENT_BY_ID(id))
+  }
+
+  async createVehicleDocument(data) {
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_DOCUMENTS, {
+      method: 'POST',
+      data
+    })
+  }
+
+  async updateVehicleDocument(id, data) {
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_DOCUMENT_BY_ID(id), {
+      method: 'PUT',
+      data
+    })
+  }
+
+  async deleteVehicleDocument(id) {
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_DOCUMENT_BY_ID(id), {
+      method: 'DELETE'
+    })
+  }
+
+  async renewVehicleDocument(id, newExpiryDate) {
+    return this.request(API_ENDPOINTS.ADMIN.RENEW_DOCUMENT(id), {
+      method: 'PATCH',
+      data: { expiryDate: newExpiryDate }
+    })
+  }
+
+  async verifyVehicleDocument(id) {
+    return this.request(API_ENDPOINTS.ADMIN.VERIFY_DOCUMENT(id), {
+      method: 'PATCH'
+    })
   }
 
   async getExpiringDocuments() {
-    return this.request('/admin/vehicle-documents/expiring');
+    return this.request(API_ENDPOINTS.ADMIN.EXPIRING_DOCUMENTS)
   }
 
   async getExpiredDocuments() {
-    return this.request('/admin/vehicle-documents/expired');
+    return this.request(API_ENDPOINTS.ADMIN.EXPIRED_DOCUMENTS)
+  }
+
+  async getDocumentAnalytics(vehicleId) {
+    return this.request(API_ENDPOINTS.ADMIN.DOCUMENT_ANALYTICS(vehicleId))
+  }
+
+  // Vehicle Analytics
+  async getVehicleAnalytics(id) {
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLE_ANALYTICS(id))
+  }
+
+  async getVehiclesNeedingService() {
+    return this.request(API_ENDPOINTS.ADMIN.VEHICLES_NEEDING_SERVICE)
   }
 }
 
-// Create singleton instance
-export const adminApi = new AdminApi();
+export const adminApi = new AdminApi()

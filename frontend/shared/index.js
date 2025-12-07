@@ -9,6 +9,7 @@ export { default as Card } from './components/Card'
 export { default as Loader } from './components/Loader'
 export { default as Toast } from './components/Toast'
 export { showToast } from './components/Toast'
+export { default as Switch } from './components/Switch'
 
 // Hooks
 export { default as useApi } from './hooks/useApi'

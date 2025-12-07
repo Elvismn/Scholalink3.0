@@ -1,5 +1,5 @@
 // Shared Auth Service - Safe for both admin and parent portals
-import { showToast } from '../components/Toast';
+import { toast } from 'sonner'; // Use sonner directly
 
 class AuthService {
   constructor(baseURL) {
@@ -70,10 +70,10 @@ class AuthService {
         localStorage.setItem('user', JSON.stringify(response.user));
       }
       
-      showToast.success('Login successful!');
+      toast.success('Login successful!');
       return response;
     } catch (error) {
-      showToast.error('Login failed', error.data?.message || error.message);
+      toast.error(error.data?.message || error.message || 'Login failed');
       throw error;
     }
   }
@@ -87,7 +87,7 @@ class AuthService {
     } finally {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      showToast.success('Logged out successfully');
+      toast.success('Logged out successfully');
     }
   }
 
@@ -110,10 +110,10 @@ class AuthService {
         data: userData,
         requiresAuth: false
       });
-      showToast.success('Registration successful!');
+      toast.success('Registration successful!');
       return response;
     } catch (error) {
-      showToast.error('Registration failed', error.data?.message || error.message);
+      toast.error(error.data?.message || error.message || 'Registration failed');
       throw error;
     }
   }

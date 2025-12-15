@@ -252,21 +252,21 @@ vehicleDocumentSchema.methods.renewDocument = function(newExpiryDate, newDocumen
 
 // Method to send renewal reminder
 vehicleDocumentSchema.methods.shouldSendReminder = function() {
-  return this.renewalReminder && 
-         this.daysUntilExpiry <= this.reminderDays && 
-         this.daysUntilExpiry > 0 &&
-         this.status === 'active';
+  return  this.renewalReminder && 
+          this.daysUntilExpiry <= this.reminderDays && 
+          this.daysUntilExpiry > 0 &&
+          this.status === 'active';
 };
 
 // Auto-populate related data
 vehicleDocumentSchema.pre('find', function() {
   this.populate('vehicle', 'plateNumber make model')
-       .populate('verifiedBy', 'firstName lastName');
+      .populate('verifiedBy', 'firstName lastName');
 });
 
 vehicleDocumentSchema.pre('findOne', function() {
   this.populate('vehicle', 'plateNumber make model')
-       .populate('verifiedBy', 'firstName lastName');
+      .populate('verifiedBy', 'firstName lastName');
 });
 
 // Ensure virtual fields are serialized

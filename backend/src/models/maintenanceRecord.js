@@ -269,14 +269,14 @@ maintenanceRecordSchema.methods.scheduleNextService = function() {
 // Auto-populate related data
 maintenanceRecordSchema.pre('find', function() {
   this.populate('vehicle', 'plateNumber make model currentOdometer')
-       .populate('approvedBy', 'firstName lastName')
-       .populate('verifiedBy', 'firstName lastName');
+      .populate('approvedBy', 'firstName lastName')
+      .populate('verifiedBy', 'firstName lastName');
 });
 
 maintenanceRecordSchema.pre('findOne', function() {
   this.populate('vehicle', 'plateNumber make model currentOdometer')
-       .populate('approvedBy', 'firstName lastName')
-       .populate('verifiedBy', 'firstName lastName');
+      .populate('approvedBy', 'firstName lastName')
+      .populate('verifiedBy', 'firstName lastName');
 });
 
 // Ensure virtual fields are serialized

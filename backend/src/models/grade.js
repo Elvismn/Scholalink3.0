@@ -21,10 +21,9 @@ const gradeSchema = new mongoose.Schema({
     required: true
   },
   scores: {
-    assignments: { type: Number, min: 0, max: 100, default: 0 },
+    opener: { type: Number, min: 0, max: 100, default: 0 },
     midterm: { type: Number, min: 0, max: 100, default: 0 },
-    final: { type: Number, min: 0, max: 100, default: 0 },
-    practical: { type: Number, min: 0, max: 100, default: 0 }
+    final: { type: Number, min: 0, max: 100, default: 0 }
   },
   totalScore: {
     type: Number,
@@ -33,7 +32,7 @@ const gradeSchema = new mongoose.Schema({
   },
   grade: {
     type: String,
-    enum: ["A", "B", "C", "D", "F", "Incomplete"],
+    enum: ["A", "B", "C", "D", "E", "F","Incomplete"],
     default: "Incomplete"
   },
   teacher: {
@@ -42,10 +41,6 @@ const gradeSchema = new mongoose.Schema({
   },
   comments: {
     type: String
-  },
-  published: {
-    type: Boolean,
-    default: false
   }
 }, {
   timestamps: true
@@ -57,15 +52,14 @@ gradeSchema.pre("save", function() {
   console.log('📊 Scores:', this.scores);
   try {
     const scores = this.scores || {};
-    const assignments = scores.assignments || 0;
+    const opener = scores.opener || 0;
     const midterm = scores.midterm || 0;
     const final = scores.final || 0;
-    const practical = scores.practical || 0;
     
     console.log('🧮 Calculating total score...');
 
     // Calculate total score with weights
-    this.totalScore = (assignments * 0.2) + (midterm * 0.3) + (final * 0.4) + (practical * 0.1);
+    this.totalScore = (((opener) + (midterm) + (final)) / 3 );
     
     // Round to 2 decimal places for cleaner display
     this.totalScore = Math.round(this.totalScore * 100) / 100;

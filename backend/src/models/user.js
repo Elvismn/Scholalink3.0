@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ["super_admin", "admin", "staff", "teacher", "parent"],
+    enum: ["super_admin", "admin", "staff", "teacher", "parent" ],
     required: true
   },
   profile: {
@@ -38,7 +38,6 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// ✅ REMOVED: Pre-save hook entirely
 
 // Static method to create user with hashed password
 userSchema.statics.createUser = async function(userData) {

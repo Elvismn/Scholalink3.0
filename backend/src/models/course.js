@@ -27,7 +27,6 @@ const courseSchema = new mongoose.Schema({
     default: 1
   },
   syllabus: [{
-    topic: String,
     duration: String
   }]
 }, { 

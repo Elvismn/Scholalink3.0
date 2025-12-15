@@ -23,7 +23,7 @@ const clubSchema = new mongoose.Schema({
     },
     role: {
       type: String,
-      enum: ["Member", "Leader", "Treasurer"],
+      enum: ["Member", "Leader", "Treasurer", "Secretary"],
       default: "Member"
     }
   }],

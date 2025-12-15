@@ -169,14 +169,14 @@ fuelRecordSchema.methods.verifyRecord = function(verifiedByStaffId) {
 // Auto-populate vehicle and filledBy
 fuelRecordSchema.pre('find', function() {
   this.populate('vehicle', 'plateNumber make model')
-       .populate('filledBy', 'firstName lastName')
-       .populate('verifiedBy', 'firstName lastName');
+      .populate('filledBy', 'firstName lastName')
+      .populate('verifiedBy', 'firstName lastName');
 });
 
 fuelRecordSchema.pre('findOne', function() {
   this.populate('vehicle', 'plateNumber make model')
-       .populate('filledBy', 'firstName lastName')
-       .populate('verifiedBy', 'firstName lastName');
+      .populate('filledBy', 'firstName lastName')
+      .populate('verifiedBy', 'firstName lastName');
 });
 
 // Ensure virtual fields are serialized

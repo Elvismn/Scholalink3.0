@@ -9,7 +9,7 @@ const curriculumSchema = new mongoose.Schema({
     type: String, 
     required: true
   },
-  gradeLevel: {
+  gradeLevels: {
     type: String,
     required: true
   },
@@ -18,7 +18,6 @@ const curriculumSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: "Course"
     },
-    hoursPerWeek: Number,
     syllabus: [String]
   }],
   description: { 

@@ -13,6 +13,15 @@ export const API_ENDPOINTS = {
 
   // Admin endpoints
   ADMIN: {
+
+    //Users
+    USERS: '/admin/users',
+    USER_BY_ID: (id) => `/admin/users/${id}`,
+
+    //Curriculum
+    CURRICULUM: '/admin/curriculum',
+    CURRICULUM_BY_ID: (id) => `/admin/curriculum/${id}`,
+
     // Students
     STUDENTS: '/admin/students',
     STUDENT_BY_ID: (id) => `/admin/students/${id}`,
@@ -93,7 +102,11 @@ export const API_ENDPOINTS = {
     GRADES: (childId) => `/parents/children/${childId}/grades`,
     NOTIFICATIONS: '/parents/notifications'
   }
+
+  
+  
 };
+
 
 // Common HTTP status codes
 export const HTTP_STATUS = {

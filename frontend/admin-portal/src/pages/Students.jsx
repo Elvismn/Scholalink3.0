@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Search, Plus, RefreshCw, Edit, Trash2, Eye, User, Mail, Phone, MapPin, Calendar } from 'lucide-react'
+import { Search, Plus, RefreshCw, Edit, Trash2, Eye, User, Mail, Phone, MapPin, Calendar, Users, Bug } from 'lucide-react'
 import { Button, Modal, Input, Card, showToast, Loader } from '@shared'
 import { STUDENT_STATUS, GRADE_LEVELS } from '@shared'
 import { adminApi } from '../services/adminApi'
@@ -31,6 +31,10 @@ const Students = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [error, setError] = useState('')
   
+  // Additional data needed
+  const [parents, setParents] = useState([])
+  const [classrooms, setClassrooms] = useState([])
+  
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [viewModalOpen, setViewModalOpen] = useState(false)
@@ -39,62 +43,171 @@ const Students = () => {
   const [editingStudent, setEditingStudent] = useState(null)
   const [selectedStudent, setSelectedStudent] = useState(null)
   
+  // Form data matching backend schema
   const [formData, setFormData] = useState({
+    // Basic Information (matches backend)
     firstName: '',
     lastName: '',
     studentId: '',
     grade: '',
     dateOfBirth: '',
     gender: 'Male',
-    email: '',
-    phone: '',
-    parentName: '',
-    parentContact: '',
-    parentEmail: '',
+    
+    // Relationships (matches backend)
+    parents: [], // Array of parent IDs
+    classroom: '', // Single classroom ID
+    
+    // Contact
     address: '',
-    emergencyContact: '',
+    
+    // Emergency Contact (object as per backend)
+    emergencyContact: {
+      name: '',
+      phone: '',
+      relationship: ''
+    },
+    
     medicalInfo: '',
     status: 'Active'
   })
 
   useEffect(() => {
-    fetchStudents()
+    fetchAllData()
   }, [])
 
-  const fetchStudents = async () => {
+  const fetchAllData = async () => {
     setLoading(true)
     try {
-      const response = await adminApi.getStudents()
-      console.log('Students API Response:', response)
+      // Fetch all data in parallel
+      const [studentsRes, parentsRes, classroomsRes] = await Promise.all([
+        adminApi.getStudents(),
+        adminApi.getParents(),
+        adminApi.getClassrooms()
+      ])
       
-      // FIX: Check if data is an array or object with students
-      if (response.success && response.data) {
-        // If data is an object, check for a students property
-        if (Array.isArray(response.data)) {
-          setStudents(response.data)
-        } else if (response.data.students && Array.isArray(response.data.students)) {
-          setStudents(response.data.students)
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-          setStudents(response.data.data)
-        } else {
-          // If it's an object but not an array, convert to array
-          setStudents(Object.values(response.data))
-        }
-      } else {
-        // If no data property, use the response directly if it's an array
+      console.log('📦 RAW Students API Response:', studentsRes)
+      console.log('📦 RAW Parents API Response:', parentsRes)
+      console.log('📦 RAW Classrooms API Response:', classroomsRes)
+      
+      // Helper function to extract data from various response structures
+      const extractData = (response, dataType) => {
+        console.log(`🔍 Extracting ${dataType} from:`, response)
+        
+        // Case 1: Direct array
         if (Array.isArray(response)) {
-          setStudents(response)
-        } else {
-          setStudents([]) // Fallback to empty array
+          console.log(`✅ ${dataType}: Direct array, length:`, response.length)
+          return response
         }
+        
+        // Case 2: { success: true, data: {...} }
+        if (response && response.success && response.data) {
+          const { data } = response
+          
+          // Case 2a: data is an array
+          if (Array.isArray(data)) {
+            console.log(`✅ ${dataType}: response.data array, length:`, data.length)
+            return data
+          }
+          
+          // Case 2b: data is an object with a key matching dataType
+          if (data && typeof data === 'object') {
+            // Try plural key first (students, parents, classrooms)
+            const pluralKey = dataType.toLowerCase() + 's'
+            if (Array.isArray(data[pluralKey])) {
+              console.log(`✅ ${dataType}: Found in data.${pluralKey}, length:`, data[pluralKey].length)
+              return data[pluralKey]
+            }
+            
+            // Try singular key
+            if (Array.isArray(data[dataType.toLowerCase()])) {
+              console.log(`✅ ${dataType}: Found in data.${dataType.toLowerCase()}, length:`, data[dataType.toLowerCase()].length)
+              return data[dataType.toLowerCase()]
+            }
+            
+            // Try 'items' or 'results'
+            if (Array.isArray(data.items)) {
+              console.log(`✅ ${dataType}: Found in data.items, length:`, data.items.length)
+              return data.items
+            }
+            if (Array.isArray(data.results)) {
+              console.log(`✅ ${dataType}: Found in data.results, length:`, data.results.length)
+              return data.results
+            }
+            
+            // Try to extract any array from the data object
+            for (const key in data) {
+              if (Array.isArray(data[key])) {
+                console.log(`✅ ${dataType}: Found array in data.${key}, length:`, data[key].length)
+                return data[key]
+              }
+            }
+            
+            // If data is an object with an _id, wrap in array
+            if (data._id) {
+              console.log(`✅ ${dataType}: Single object, wrapping in array`)
+              return [data]
+            }
+            
+            // Last resort: convert object values to array
+            const values = Object.values(data)
+            if (values.length > 0 && values.some(v => v && typeof v === 'object')) {
+              console.log(`✅ ${dataType}: Converting object values to array, length:`, values.length)
+              return values
+            }
+          }
+        }
+        
+        // Case 3: Response has direct property with array
+        const pluralKey = dataType.toLowerCase() + 's'
+        if (response && Array.isArray(response[pluralKey])) {
+          console.log(`✅ ${dataType}: Direct property response.${pluralKey}, length:`, response[pluralKey].length)
+          return response[pluralKey]
+        }
+        
+        // Case 4: Try to find any array in the response
+        if (response && typeof response === 'object') {
+          for (const key in response) {
+            if (Array.isArray(response[key])) {
+              console.log(`✅ ${dataType}: Found array in response.${key}, length:`, response[key].length)
+              return response[key]
+            }
+          }
+        }
+        
+        console.warn(`⚠️ ${dataType}: Could not extract data, returning empty array`)
+        console.log('Response structure was:', JSON.stringify(response, null, 2))
+        return []
+      }
+
+      // Extract data from each response
+      const studentsData = extractData(studentsRes, 'student')
+      const parentsData = extractData(parentsRes, 'parent')
+      const classroomsData = extractData(classroomsRes, 'classroom')
+      
+      console.log('✅ FINAL Students Data:', studentsData)
+      console.log('✅ FINAL Parents Data:', parentsData)
+      console.log('✅ FINAL Classrooms Data:', classroomsData)
+      
+      setStudents(studentsData)
+      setParents(parentsData)
+      setClassrooms(classroomsData)
+      
+      // If no students found but API succeeded, check backend
+      if (studentsData.length === 0 && studentsRes.success) {
+        console.log('ℹ️ API succeeded but no students found. Possible issues:')
+        console.log('1. No students in database')
+        console.log('2. Backend returns empty array')
+        console.log('3. Response structure different than expected')
       }
       
       setError('')
     } catch (error) {
-      console.error('Error fetching students:', error)
-      setError('Failed to load students. Please check your connection and try again.')
-      showToast.error('Failed to load students', error.data?.message || error.message)
-      setStudents([]) // Set empty array on error
+      console.error('❌ Error fetching data:', error)
+      setError('Failed to load data. Please check your connection and try again.')
+      showToast.error('Failed to load data', error.data?.message || error.message)
+      setStudents([])
+      setParents([])
+      setClassrooms([])
     } finally {
       setLoading(false)
     }
@@ -117,7 +230,7 @@ const Students = () => {
         (student.grade?.toLowerCase().includes(searchLower)) ||
         (student.studentId?.toLowerCase().includes(searchLower)) ||
         (student.email?.toLowerCase().includes(searchLower)) ||
-        (student.parentName?.toLowerCase().includes(searchLower))
+        (student.parentNames?.toLowerCase().includes(searchLower))
       ) : true
       
       // Status filter
@@ -132,30 +245,62 @@ const Students = () => {
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
+  const handleEmergencyContactChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      emergencyContact: {
+        ...prev.emergencyContact,
+        [name]: value
+      }
+    }))
+  }
+
+  const handleParentSelection = (e) => {
+    const options = e.target.options
+    const selectedValues = []
+    for (let i = 0; i < options.length; i++) {
+      if (options[i].selected) {
+        selectedValues.push(options[i].value)
+      }
+    }
+    setFormData(prev => ({ ...prev, parents: selectedValues }))
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSubmitting(true)
     
     try {
+      // Prepare data matching backend schema
       const studentData = {
+        // Basic Information
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
-        studentId: formData.studentId.trim() || `STU${Date.now()}`,
+        studentId: formData.studentId.trim(),
         grade: formData.grade,
         dateOfBirth: formData.dateOfBirth,
         gender: formData.gender,
-        email: formData.email,
-        phone: formData.phone,
-        parentName: formData.parentName,
-        parentContact: formData.parentContact,
-        parentEmail: formData.parentEmail,
-        address: formData.address,
-        emergencyContact: formData.emergencyContact,
-        medicalInfo: formData.medicalInfo,
+        
+        // Relationships
+        parents: formData.parents, // Array of parent IDs
+        classroom: formData.classroom || undefined, // Optional classroom ID
+        
+        // Contact
+        address: formData.address.trim(),
+        
+        // Emergency Contact (object)
+        emergencyContact: {
+          name: formData.emergencyContact.name.trim(),
+          phone: formData.emergencyContact.phone.trim(),
+          relationship: formData.emergencyContact.relationship.trim()
+        },
+        
+        medicalInfo: formData.medicalInfo.trim(),
         status: formData.status
       }
 
-      console.log('Saving student:', editingStudent ? 'update' : 'create')
+      console.log('💾 Saving student:', editingStudent ? 'UPDATE' : 'CREATE', studentData)
 
       if (editingStudent) {
         await adminApi.updateStudent(editingStudent._id, studentData)
@@ -165,11 +310,11 @@ const Students = () => {
         showToast.success('Student created successfully')
       }
       
-      await fetchStudents()
+      await fetchAllData()
       resetForm()
       setIsModalOpen(false)
     } catch (error) {
-      console.error('Error saving student:', error)
+      console.error('❌ Error saving student:', error)
       setError('Failed to save student. Please try again.')
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
@@ -178,8 +323,10 @@ const Students = () => {
   }
 
   const handleEdit = (student) => {
-    console.log('Editing student:', student._id)
+    console.log('✏️ Editing student:', student._id)
     setEditingStudent(student)
+    
+    // Populate form from student data (matching backend schema)
     setFormData({
       firstName: student.firstName || '',
       lastName: student.lastName || '',
@@ -187,16 +334,18 @@ const Students = () => {
       grade: student.grade || '',
       dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth).toISOString().split('T')[0] : '',
       gender: student.gender || 'Male',
-      email: student.email || '',
-      phone: student.phone || '',
-      parentName: student.parentName || '',
-      parentContact: student.parentContact || '',
-      parentEmail: student.parentEmail || '',
+      parents: student.parents ? student.parents.map(p => p._id || p) : [],
+      classroom: student.classroom?._id || student.classroom || '',
       address: student.address || '',
-      emergencyContact: student.emergencyContact || '',
+      emergencyContact: student.emergencyContact || {
+        name: '',
+        phone: '',
+        relationship: ''
+      },
       medicalInfo: student.medicalInfo || '',
       status: student.status || 'Active'
     })
+    
     setIsModalOpen(true)
   }
 
@@ -206,13 +355,14 @@ const Students = () => {
   }
 
   const handleDelete = async (studentId) => {
-    if (window.confirm('Are you sure you want to delete this student?')) {
+    if (window.confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
       try {
+        console.log('🗑️ Deleting student:', studentId)
         await adminApi.deleteStudent(studentId)
         showToast.success('Student deleted successfully')
-        fetchStudents()
+        fetchAllData()
       } catch (error) {
-        console.error('Error deleting student:', error)
+        console.error('❌ Error deleting student:', error)
         setError('Failed to delete student. Please try again.')
         showToast.error('Failed to delete student', error.data?.message || error.message)
       }
@@ -227,13 +377,14 @@ const Students = () => {
       grade: '',
       dateOfBirth: '',
       gender: 'Male',
-      email: '',
-      phone: '',
-      parentName: '',
-      parentContact: '',
-      parentEmail: '',
+      parents: [],
+      classroom: '',
       address: '',
-      emergencyContact: '',
+      emergencyContact: {
+        name: '',
+        phone: '',
+        relationship: ''
+      },
       medicalInfo: '',
       status: 'Active'
     })
@@ -241,7 +392,7 @@ const Students = () => {
   }
 
   const openCreateModal = () => {
-    console.log('Opening create modal')
+    console.log('➕ Opening create student modal')
     resetForm()
     setIsModalOpen(true)
   }
@@ -277,6 +428,29 @@ const Students = () => {
     })
   }
 
+  // Helper to get parent names for display
+  const getParentNames = (student) => {
+    if (!student.parents || !Array.isArray(student.parents)) return 'No parents'
+    
+    const parentNames = student.parents.map(parent => {
+      if (typeof parent === 'object') {
+        return `${parent.user?.firstName || ''} ${parent.user?.lastName || ''}`.trim()
+      }
+      return 'Unknown Parent'
+    })
+    
+    return parentNames.filter(name => name).join(', ') || 'No parents'
+  }
+
+  // Helper to get classroom name for display
+  const getClassName = (student) => {
+    if (!student.classroom) return 'Not assigned'
+    if (typeof student.classroom === 'object') {
+      return student.classroom.name || 'Unnamed Class'
+    }
+    return 'Classroom ID: ' + student.classroom
+  }
+
   // Display students - filtered if search is active
   const displayStudents = filteredStudents
 
@@ -301,12 +475,64 @@ const Students = () => {
         <div className="flex gap-2">
           <Button
             variant="secondary"
-            onClick={fetchStudents}
+            onClick={fetchAllData}
             className="flex items-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
             Refresh
           </Button>
+          
+          {/* Debug API Button */}
+          <Button
+            variant="warning"
+            onClick={async () => {
+              console.log('🔍 DEBUG: Checking API responses...')
+              try {
+                const testRes = await adminApi.getStudents()
+                console.log('🔍 DEBUG: Raw students response:', testRes)
+                console.log('🔍 DEBUG: Response keys:', Object.keys(testRes))
+                console.log('🔍 DEBUG: Response.data keys:', testRes.data ? Object.keys(testRes.data) : 'No data')
+                console.log('🔍 DEBUG: Full response structure:')
+                console.dir(testRes, { depth: 5 })
+                
+                // Try to manually find students
+                if (testRes.data) {
+                  const allKeys = Object.keys(testRes.data)
+                  console.log('🔍 DEBUG: Searching data object keys:', allKeys)
+                  allKeys.forEach(key => {
+                    const value = testRes.data[key]
+                    console.log(`🔍 DEBUG: data.${key}:`, Array.isArray(value) ? `Array (${value.length} items)` : typeof value)
+                    if (Array.isArray(value)) {
+                      console.log(`🔍 DEBUG: First item of ${key}:`, value[0])
+                    }
+                  })
+                  
+                  // Deep search for arrays
+                  const deepSearch = (obj, path = '') => {
+                    if (Array.isArray(obj)) {
+                      console.log(`🔍 DEBUG: Found array at ${path}, length:`, obj.length)
+                      if (obj.length > 0) {
+                        console.log(`🔍 DEBUG: First array item:`, obj[0])
+                      }
+                    } else if (obj && typeof obj === 'object') {
+                      for (const key in obj) {
+                        deepSearch(obj[key], path ? `${path}.${key}` : key)
+                      }
+                    }
+                  }
+                  
+                  deepSearch(testRes.data, 'data')
+                }
+              } catch (error) {
+                console.error('🔍 DEBUG: Error testing API:', error)
+              }
+            }}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+          >
+            <Bug className="w-4 h-4" />
+            Debug API
+          </Button>
+          
           <Button
             onClick={openCreateModal}
             className="flex items-center gap-2"
@@ -359,7 +585,6 @@ const Students = () => {
               />
             </div>
           </div>
-          {/* FIXED: Using native select instead of problematic Select component */}
           <div className="w-full md:w-48">
             <select
               value={statusFilter}
@@ -468,12 +693,10 @@ const Students = () => {
                     <span>{student.grade}</span>
                   </div>
                   
-                  {student.email && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      <span className="truncate">{student.email}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-gray-400" />
+                    <span className="truncate">Class: {getClassName(student)}</span>
+                  </div>
                   
                   {student.dateOfBirth && (
                     <div className="flex items-center gap-2">
@@ -496,17 +719,18 @@ const Students = () => {
                     </span>
                   </div>
                   
-                  {student.parentName && (
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-gray-400" />
-                      <span className="truncate">Parent: {student.parentName}</span>
-                    </div>
-                  )}
+                  <div className="flex items-start gap-2">
+                    <Users className="w-4 h-4 text-gray-400 mt-0.5" />
+                    <span className="truncate">Parents: {getParentNames(student)}</span>
+                  </div>
                   
-                  {student.phone && (
+                  {student.emergencyContact?.phone && (
                     <div className="flex items-center gap-2">
                       <Phone className="w-4 h-4 text-gray-400" />
-                      <span className="text-xs truncate">{student.phone}</span>
+                      <span className="text-xs truncate">
+                        Emergency: {student.emergencyContact.phone}
+                        {student.emergencyContact.name && ` (${student.emergencyContact.name})`}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -522,15 +746,15 @@ const Students = () => {
         )}
       </Card>
 
-      {/* Create/Edit Student Modal - FIXED with closeOnBackdropClick={false} */}
+      {/* Create/Edit Student Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
+          console.log('🟢 Student modal onClose triggered')
           setIsModalOpen(false)
           setEditingStudent(null)
           resetForm()
         }}
-        closeOnBackdropClick={false}
         title={editingStudent ? 'Edit Student' : 'Add New Student'}
         size="lg"
       >
@@ -564,7 +788,6 @@ const Students = () => {
               onChange={handleInputChange}
               placeholder="e.g., STU001"
             />
-            {/* FIXED: Using native select for Grade */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Grade *</label>
               <select
@@ -575,7 +798,7 @@ const Students = () => {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select Grade</option>
-                {GRADE_LEVELS.map(grade => (
+                {GRADE_LEVELS && GRADE_LEVELS.map(grade => (
                   <option key={grade} value={grade}>{grade}</option>
                 ))}
               </select>
@@ -584,17 +807,18 @@ const Students = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Date of Birth"
+              label="Date of Birth *"
               name="dateOfBirth"
               type="date"
+              required
               value={formData.dateOfBirth}
               onChange={handleInputChange}
             />
-            {/* FIXED: Using native select for Gender */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
               <select
                 name="gender"
+                required
                 value={formData.gender}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -606,49 +830,47 @@ const Students = () => {
             </div>
           </div>
 
+          {/* Relationships */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="student@example.com"
-            />
-            <Input
-              label="Phone"
-              name="phone"
-              value={formData.phone}
-              onChange={handleInputChange}
-              placeholder="Phone number"
-            />
-          </div>
-
-          {/* Parent Information */}
-          <Input
-            label="Parent/Guardian Name"
-            name="parentName"
-            value={formData.parentName}
-            onChange={handleInputChange}
-            placeholder="Parent or guardian name"
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Parent Contact"
-              name="parentContact"
-              value={formData.parentContact}
-              onChange={handleInputChange}
-              placeholder="Parent phone number"
-            />
-            <Input
-              label="Parent Email"
-              name="parentEmail"
-              type="email"
-              value={formData.parentEmail}
-              onChange={handleInputChange}
-              placeholder="parent@example.com"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Parents *</label>
+              <select
+                multiple
+                value={formData.parents}
+                onChange={handleParentSelection}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 h-32"
+                required
+              >
+                <option value="" disabled>Select parent(s)</option>
+                {Array.isArray(parents) && parents.map(parent => (
+                  <option key={parent._id} value={parent._id}>
+                    {parent.user?.firstName || 'Unknown'} {parent.user?.lastName || ''}
+                    {parent.user?.email && ` (${parent.user.email})`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Hold Ctrl/Cmd to select multiple parents
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Classroom</label>
+              <select
+                name="classroom"
+                value={formData.classroom}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Classroom (Optional)</option>
+                {Array.isArray(classrooms) && classrooms.map(classroom => (
+                  <option key={classroom._id} value={classroom._id}>
+                    {classroom.name || `Class ${classroom._id.substring(0, 8)}`}
+                    {classroom.grade && ` - ${classroom.grade}`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <Input
@@ -659,15 +881,46 @@ const Students = () => {
             placeholder="Home address"
           />
 
+          {/* Emergency Contact */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Emergency Contact</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input
+                label="Contact Name"
+                name="name"
+                value={formData.emergencyContact.name}
+                onChange={handleEmergencyContactChange}
+                placeholder="Emergency contact name"
+              />
+              <Input
+                label="Phone"
+                name="phone"
+                value={formData.emergencyContact.phone}
+                onChange={handleEmergencyContactChange}
+                placeholder="Emergency phone"
+              />
+              <Input
+                label="Relationship"
+                name="relationship"
+                value={formData.emergencyContact.relationship}
+                onChange={handleEmergencyContactChange}
+                placeholder="Relationship to student"
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Emergency Contact"
-              name="emergencyContact"
-              value={formData.emergencyContact}
-              onChange={handleInputChange}
-              placeholder="Emergency contact number"
-            />
-            {/* FIXED: Using native select for Status */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Medical Information</label>
+              <textarea
+                name="medicalInfo"
+                value={formData.medicalInfo}
+                onChange={handleInputChange}
+                rows="3"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Allergies, conditions, special needs..."
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
@@ -676,32 +929,19 @@ const Students = () => {
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {Object.entries(STUDENT_STATUS).map(([key, value]) => (
+                {STUDENT_STATUS && Object.entries(STUDENT_STATUS).map(([key, value]) => (
                   <option key={key} value={key}>{value}</option>
                 ))}
               </select>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Medical Information
-            </label>
-            <textarea
-              name="medicalInfo"
-              value={formData.medicalInfo}
-              onChange={handleInputChange}
-              rows="3"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Allergies, conditions, special needs..."
-            />
-          </div>
-
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="pt-4 flex justify-end gap-3 border-t">
             <Button
               variant="secondary"
               type="button"
               onClick={() => {
+                console.log('🔘 Cancel button clicked')
                 setIsModalOpen(false)
                 setEditingStudent(null)
                 resetForm()
@@ -719,7 +959,10 @@ const Students = () => {
       {/* View Student Details Modal */}
       <Modal
         isOpen={viewModalOpen}
-        onClose={() => setViewModalOpen(false)}
+        onClose={() => {
+          console.log('👁️ View modal onClose triggered')
+          setViewModalOpen(false)
+        }}
         title="Student Details"
         size="lg"
       >
@@ -768,24 +1011,16 @@ const Students = () => {
                     <div className="flex items-center gap-2">
                       <span><strong>Grade:</strong> {selectedStudent.grade || 'N/A'}</span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-gray-400" />
+                      <span><strong>Class:</strong> {getClassName(selectedStudent)}</span>
+                    </div>
                   </div>
                 </div>
 
                 <div>
                   <h4 className="text-sm font-medium text-gray-500 mb-2">Contact Information</h4>
                   <div className="space-y-2">
-                    {selectedStudent.email && (
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-4 h-4 text-gray-400" />
-                        <span><strong>Email:</strong> {selectedStudent.email}</span>
-                      </div>
-                    )}
-                    {selectedStudent.phone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        <span><strong>Phone:</strong> {selectedStudent.phone}</span>
-                      </div>
-                    )}
                     {selectedStudent.address && (
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-gray-400" />
@@ -800,25 +1035,27 @@ const Students = () => {
                 <div>
                   <h4 className="text-sm font-medium text-gray-500 mb-2">Parent/Guardian Information</h4>
                   <div className="space-y-2">
-                    {selectedStudent.parentName && (
-                      <div>
-                        <strong>Name:</strong> {selectedStudent.parentName}
-                      </div>
-                    )}
-                    {selectedStudent.parentContact && (
-                      <div>
-                        <strong>Contact:</strong> {selectedStudent.parentContact}
-                      </div>
-                    )}
-                    {selectedStudent.parentEmail && (
-                      <div>
-                        <strong>Email:</strong> {selectedStudent.parentEmail}
-                      </div>
-                    )}
+                    <div>
+                      <strong>Parents:</strong> {getParentNames(selectedStudent)}
+                    </div>
                     {selectedStudent.emergencyContact && (
-                      <div>
-                        <strong>Emergency Contact:</strong> {selectedStudent.emergencyContact}
-                      </div>
+                      <>
+                        {selectedStudent.emergencyContact.name && (
+                          <div>
+                            <strong>Emergency Contact:</strong> {selectedStudent.emergencyContact.name}
+                          </div>
+                        )}
+                        {selectedStudent.emergencyContact.phone && (
+                          <div>
+                            <strong>Emergency Phone:</strong> {selectedStudent.emergencyContact.phone}
+                          </div>
+                        )}
+                        {selectedStudent.emergencyContact.relationship && (
+                          <div>
+                            <strong>Relationship:</strong> {selectedStudent.emergencyContact.relationship}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

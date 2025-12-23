@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Search, Plus, User, Mail, Shield, CheckCircle, XCircle, Edit, Trash2, RefreshCw, Key } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Search, Plus, User, Mail, Shield, CheckCircle, XCircle, Edit, Trash2, RefreshCw, Key, AlertCircle } from 'lucide-react'
 import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
-import { USER_ROLES } from '@shared'
 import { adminApi } from '../services/adminApi'
 
 const Users = () => {
@@ -20,6 +19,8 @@ const Users = () => {
   })
   const [formData, setFormData] = useState({
     email: '',
+    password: '',  // Required for new users
+    confirmPassword: '',  // Required for new users
     role: 'parent',
     profile: {
       firstName: '',
@@ -27,6 +28,11 @@ const Users = () => {
       phone: ''
     }
   })
+
+  // Debug: Track modal state changes
+  useEffect(() => {
+    console.log('🔄 Users Modal: isModalOpen changed to:', isModalOpen);
+  }, [isModalOpen]);
 
   useEffect(() => {
     fetchUsers()
@@ -36,9 +42,29 @@ const Users = () => {
     setLoading(true)
     try {
       const response = await adminApi.getUsers()
-      setUsers(response.data || response || [])
+      console.log('📦 Users API Response:', response)
+      
+      // Handle different response structures
+      let usersData = []
+      if (Array.isArray(response)) {
+        usersData = response
+      } else if (response && Array.isArray(response.data)) {
+        usersData = response.data
+      } else if (response && response.data && response.data.users) {
+        usersData = response.data.users
+      } else if (response && response.data) {
+        // Check if data is an object with users array
+        if (Array.isArray(response.data)) {
+          usersData = response.data
+        }
+      }
+      
+      console.log('✅ Normalized Users:', usersData)
+      setUsers(usersData || [])
     } catch (error) {
+      console.error('❌ Error fetching users:', error)
       showToast.error('Failed to load users', error.data?.message || error.message)
+      setUsers([])
     } finally {
       setLoading(false)
     }
@@ -49,6 +75,26 @@ const Users = () => {
     setSubmitting(true)
     
     try {
+      // Validate password for new users
+      if (!editingUser) {
+        if (!formData.password) {
+          showToast.error('Password is required for new users')
+          setSubmitting(false)
+          return
+        }
+        if (formData.password !== formData.confirmPassword) {
+          showToast.error('Passwords do not match')
+          setSubmitting(false)
+          return
+        }
+        if (formData.password.length < 6) {
+          showToast.error('Password must be at least 6 characters')
+          setSubmitting(false)
+          return
+        }
+      }
+
+      // Prepare user data according to backend schema
       const userData = {
         email: formData.email.trim().toLowerCase(),
         role: formData.role,
@@ -59,33 +105,28 @@ const Users = () => {
         }
       }
 
+      // For new users, include password
+      if (!editingUser) {
+        userData.password = formData.password
+        userData.confirmPassword = formData.confirmPassword
+      }
+
+      console.log('💾 Saving user:', editingUser ? 'UPDATE' : 'CREATE', userData)
+
       if (editingUser) {
         await adminApi.updateUser(editingUser._id, userData)
         showToast.success('User updated successfully')
       } else {
-        // For new users, we need to include password
-        const newUserData = {
-          ...userData,
-          password: 'default123', // You should prompt for password
-          confirmPassword: 'default123'
-        }
-        await adminApi.createUser(newUserData)
+        await adminApi.createUser(userData)
         showToast.success('User created successfully')
       }
       
       setIsModalOpen(false)
       setEditingUser(null)
-      setFormData({
-        email: '',
-        role: 'parent',
-        profile: {
-          firstName: '',
-          lastName: '',
-          phone: ''
-        }
-      })
+      resetForm()
       fetchUsers()
     } catch (error) {
+      console.error('❌ Error saving user:', error)
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -99,26 +140,41 @@ const Users = () => {
       return
     }
     
+    if (passwordData.newPassword.length < 6) {
+      showToast.error('Password must be at least 6 characters')
+      return
+    }
+    
     setSubmitting(true)
     try {
-      // You'll need to implement this API endpoint
-      showToast.info('Password reset feature coming soon')
+      // Create password reset payload
+      const passwordResetData = {
+        password: passwordData.newPassword,
+        confirmPassword: passwordData.confirmPassword
+      }
+      
+      // Use updateUser endpoint for password reset
+      await adminApi.updateUser(editingUser._id, passwordResetData)
+      showToast.success('Password reset successfully')
       setIsPasswordModalOpen(false)
       setPasswordData({ newPassword: '', confirmPassword: '' })
     } catch (error) {
-      showToast.error('Failed to change password', error.data?.message || error.message)
+      console.error('❌ Error resetting password:', error)
+      showToast.error('Failed to reset password', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
     }
   }
 
   const handleDelete = async (userId) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
+    if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       try {
+        console.log('🗑️ Deleting user:', userId)
         await adminApi.deleteUser(userId)
         showToast.success('User deleted successfully')
         fetchUsers()
       } catch (error) {
+        console.error('❌ Error deleting user:', error)
         showToast.error('Failed to delete user', error.data?.message || error.message)
       }
     }
@@ -126,12 +182,55 @@ const Users = () => {
 
   const toggleUserStatus = async (user) => {
     try {
-      await adminApi.updateUser(user._id, { isActive: !user.isActive })
-      showToast.success(`User ${!user.isActive ? 'activated' : 'deactivated'} successfully`)
+      const newStatus = !user.isActive
+      console.log('🔄 Toggling user status:', user._id, 'to', newStatus)
+      await adminApi.updateUser(user._id, { isActive: newStatus })
+      showToast.success(`User ${newStatus ? 'activated' : 'deactivated'} successfully`)
       fetchUsers()
     } catch (error) {
+      console.error('❌ Error updating user status:', error)
       showToast.error('Failed to update user status', error.data?.message || error.message)
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      email: '',
+      password: '',
+      confirmPassword: '',
+      role: 'parent',
+      profile: {
+        firstName: '',
+        lastName: '',
+        phone: ''
+      }
+    })
+  }
+
+  const openCreateModal = () => {
+    console.log('➕ Opening create user modal')
+    setEditingUser(null)
+    resetForm()
+    setIsModalOpen(true)
+  }
+
+  const openEditModal = (user) => {
+    console.log('✏️ Opening edit modal for:', user)
+    setEditingUser(user)
+    
+    setFormData({
+      email: user.email || '',
+      password: '',  // Don't show password when editing
+      confirmPassword: '',  // Don't show confirm password when editing
+      role: user.role || 'parent',
+      profile: {
+        firstName: user.profile?.firstName || '',
+        lastName: user.profile?.lastName || '',
+        phone: user.profile?.phone || ''
+      }
+    })
+    
+    setIsModalOpen(true)
   }
 
   const getRoleColor = (role) => {
@@ -181,8 +280,8 @@ const Users = () => {
     {
       key: 'profile.phone',
       title: 'Phone',
-      render: (phone) => (
-        <div className="text-gray-900">{phone || 'N/A'}</div>
+      render: (_, user) => (
+        <div className="text-gray-900">{user.profile?.phone || 'N/A'}</div>
       )
     },
     {
@@ -219,19 +318,7 @@ const Users = () => {
       render: (_, user) => (
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              setEditingUser(user)
-              setFormData({
-                email: user.email || '',
-                role: user.role || 'parent',
-                profile: {
-                  firstName: user.profile?.firstName || '',
-                  lastName: user.profile?.lastName || '',
-                  phone: user.profile?.phone || ''
-                }
-              })
-              setIsModalOpen(true)
-            }}
+            onClick={() => openEditModal(user)}
             className="p-1 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded"
             title="Edit"
           >
@@ -239,7 +326,6 @@ const Users = () => {
           </button>
           <button
             onClick={() => {
-              // Set user for password reset
               setEditingUser(user)
               setIsPasswordModalOpen(true)
             }}
@@ -271,32 +357,41 @@ const Users = () => {
     }
   ]
 
-  const filteredUsers = users.filter(user => {
-    if (!searchTerm && roleFilter === 'all' && statusFilter === 'all') return true
+  // Use useMemo for filteredUsers to prevent re-renders
+  const filteredUsers = useMemo(() => {
+    console.log('🔍 Filtering users:', users.length)
+    if (!Array.isArray(users)) return []
+    if (!searchTerm && roleFilter === 'all' && statusFilter === 'all') return users
     
     const searchLower = searchTerm.toLowerCase()
-    const fullName = `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.toLowerCase()
-    const matchesSearch = searchTerm ? (
-      fullName.includes(searchLower) ||
-      user.email?.toLowerCase().includes(searchLower) ||
-      user.profile?.phone?.toLowerCase().includes(searchLower)
-    ) : true
     
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'active' && user.isActive) ||
-      (statusFilter === 'inactive' && !user.isActive)
-    
-    return matchesSearch && matchesRole && matchesStatus
-  })
+    return users.filter(user => {
+      if (!user) return false
+      
+      const fullName = `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.toLowerCase()
+      const matchesSearch = searchTerm ? (
+        fullName.includes(searchLower) ||
+        user.email?.toLowerCase().includes(searchLower) ||
+        user.profile?.phone?.toLowerCase().includes(searchLower)
+      ) : true
+      
+      const matchesRole = roleFilter === 'all' || user.role === roleFilter
+      const matchesStatus = statusFilter === 'all' || 
+        (statusFilter === 'active' && user.isActive) ||
+        (statusFilter === 'inactive' && !user.isActive)
+      
+      return matchesSearch && matchesRole && matchesStatus
+    })
+  }, [users, searchTerm, roleFilter, statusFilter])
 
-  const activeUsers = users.filter(u => u.isActive).length
-  const adminCount = users.filter(u => u.role === 'admin' || u.role === 'super_admin').length
-  const parentCount = users.filter(u => u.role === 'parent').length
-  const teacherCount = users.filter(u => u.role === 'teacher').length
+  // Calculate stats safely
+  const activeUsers = Array.isArray(users) ? users.filter(u => u.isActive).length : 0
+  const adminCount = Array.isArray(users) ? users.filter(u => u.role === 'admin' || u.role === 'super_admin').length : 0
+  const parentCount = Array.isArray(users) ? users.filter(u => u.role === 'parent').length : 0
+  const teacherCount = Array.isArray(users) ? users.filter(u => u.role === 'teacher').length : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
@@ -312,19 +407,7 @@ const Users = () => {
             Refresh
           </Button>
           <Button
-            onClick={() => {
-              setEditingUser(null)
-              setFormData({
-                email: '',
-                role: 'parent',
-                profile: {
-                  firstName: '',
-                  lastName: '',
-                  phone: ''
-                }
-              })
-              setIsModalOpen(true)
-            }}
+            onClick={openCreateModal}
             className="flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -342,7 +425,7 @@ const Users = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Users</p>
-              <p className="text-2xl font-bold">{users.length}</p>
+              <p className="text-2xl font-bold">{Array.isArray(users) ? users.length : 0}</p>
             </div>
           </div>
         </Card>
@@ -396,6 +479,7 @@ const Users = () => {
               />
             </div>
           </div>
+          {/* FIXED: Select component - use value prop only (not defaultValue) */}
           <Select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -438,10 +522,15 @@ const Users = () => {
             <Loader size="lg" />
             <p className="mt-4 text-gray-600">Loading users...</p>
           </div>
-        ) : filteredUsers.length === 0 ? (
+        ) : !Array.isArray(filteredUsers) || filteredUsers.length === 0 ? (
           <div className="py-12 text-center">
             <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No users found</p>
+            <p className="text-gray-500">
+              {searchTerm || roleFilter !== 'all' || statusFilter !== 'all' 
+                ? 'No users match your search criteria' 
+                : 'No users found'
+              }
+            </p>
             {(searchTerm || roleFilter !== 'all' || statusFilter !== 'all') ? (
               <Button
                 variant="link"
@@ -456,18 +545,7 @@ const Users = () => {
               </Button>
             ) : (
               <Button
-                onClick={() => {
-                  setFormData({
-                    email: '',
-                    role: 'parent',
-                    profile: {
-                      firstName: '',
-                      lastName: '',
-                      phone: ''
-                    }
-                  })
-                  setIsModalOpen(true)
-                }}
+                onClick={openCreateModal}
                 className="mt-4"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -489,8 +567,10 @@ const Users = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
+          console.log('🟢 User modal onClose triggered')
           setIsModalOpen(false)
           setEditingUser(null)
+          resetForm()
         }}
         title={editingUser ? 'Edit User' : 'Add New User'}
         size="lg"
@@ -535,6 +615,7 @@ const Users = () => {
                 profile: { ...formData.profile, phone: e.target.value }
               })}
             />
+            {/* FIXED: Select component with only value prop */}
             <Select
               label="Role"
               required
@@ -549,22 +630,70 @@ const Users = () => {
             />
           </div>
 
+          {/* Password fields for new users only */}
           {!editingUser && (
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <p className="text-sm text-blue-700">
-                <strong>Note:</strong> New users will be created with a default password. 
-                Please instruct them to change their password on first login.
-              </p>
+            <div className="space-y-4">
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-medium text-gray-900 mb-3">Password</h3>
+                <Input
+                  label="Password"
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  helperText="Minimum 6 characters"
+                />
+                <Input
+                  label="Confirm Password"
+                  type="password"
+                  required
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                />
+              </div>
+              
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <div className="flex gap-2">
+                  <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-blue-700">
+                    <p className="font-medium mb-1">Password Requirements:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>At least 6 characters long</li>
+                      <li>User should change password on first login</li>
+                      <li>Store password securely</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="pt-4 flex justify-end gap-3">
+          {/* Info for editing users */}
+          {editingUser && (
+            <div className="bg-yellow-50 p-3 rounded-lg">
+              <div className="flex gap-2">
+                <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-yellow-700">
+                  <p className="font-medium mb-1">Editing User:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Leave password fields empty to keep current password</li>
+                    <li>Use "Reset Password" button to change password</li>
+                    <li>Role changes may affect user permissions</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="pt-4 flex justify-end gap-3 border-t">
             <Button
               variant="secondary"
               type="button"
               onClick={() => {
+                console.log('🔘 Cancel button clicked')
                 setIsModalOpen(false)
                 setEditingUser(null)
+                resetForm()
               }}
             >
               Cancel
@@ -580,6 +709,7 @@ const Users = () => {
       <Modal
         isOpen={isPasswordModalOpen}
         onClose={() => {
+          console.log('🔢 Password modal onClose triggered')
           setIsPasswordModalOpen(false)
           setPasswordData({ newPassword: '', confirmPassword: '' })
         }}
@@ -600,6 +730,7 @@ const Users = () => {
             required
             value={passwordData.newPassword}
             onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
+            helperText="Minimum 6 characters"
           />
           <Input
             label="Confirm Password"
@@ -609,7 +740,7 @@ const Users = () => {
             onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
           />
           
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="pt-4 flex justify-end gap-3 border-t">
             <Button
               variant="secondary"
               type="button"

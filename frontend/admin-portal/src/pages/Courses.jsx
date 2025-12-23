@@ -1,7 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Search, Plus, BookOpen, User, Hash, Edit, Trash2, RefreshCw } from 'lucide-react'
-import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
+import { Button, Modal, Input, Card, showToast, Loader } from '@shared'
 import { adminApi } from '../services/adminApi'
+
+// Inline Badge component
+const Badge = ({ children, variant = 'default', className = '' }) => {
+  const variantClasses = {
+    default: 'bg-gray-100 text-gray-800',
+    success: 'bg-green-100 text-green-800',
+    error: 'bg-red-100 text-red-800',
+    warning: 'bg-yellow-100 text-yellow-800',
+    info: 'bg-blue-100 text-blue-800'
+  };
+
+  const baseClasses = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
+  
+  return (
+    <span className={`${baseClasses} ${variantClasses[variant] || variantClasses.default} ${className}`}>
+      {children}
+    </span>
+  );
+};
 
 const Courses = () => {
   const [courses, setCourses] = useState([])
@@ -12,6 +31,7 @@ const Courses = () => {
   const [editingCourse, setEditingCourse] = useState(null)
   const [instructors, setInstructors] = useState([])
   const [departments, setDepartments] = useState([])
+  const [error, setError] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -28,25 +48,103 @@ const Courses = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
+      console.log('🔍 Courses - Fetching data...')
       const [coursesRes, staffRes, deptRes] = await Promise.all([
         adminApi.getCourses(),
         adminApi.getStaff(),
         adminApi.getDepartments()
       ])
-      setCourses(coursesRes.data || coursesRes || [])
+      
+      console.log('✅ Courses - Data received:', coursesRes)
+      
+      // Handle courses response
+      let coursesData = []
+      if (coursesRes) {
+        if (Array.isArray(coursesRes)) {
+          coursesData = coursesRes
+        } else if (coursesRes.data && Array.isArray(coursesRes.data)) {
+          coursesData = coursesRes.data
+        } else if (coursesRes.courses && Array.isArray(coursesRes.courses)) {
+          coursesData = coursesRes.courses
+        } else if (typeof coursesRes === 'object') {
+          const arrayProps = Object.values(coursesRes).filter(Array.isArray)
+          if (arrayProps.length > 0) {
+            coursesData = arrayProps[0]
+          }
+        }
+      }
+      setCourses(coursesData || [])
+      
+      // Handle staff response
+      let staffData = []
+      if (staffRes) {
+        if (Array.isArray(staffRes)) {
+          staffData = staffRes
+        } else if (staffRes.data && Array.isArray(staffRes.data)) {
+          staffData = staffRes.data
+        } else if (staffRes.staff && Array.isArray(staffRes.staff)) {
+          staffData = staffRes.staff
+        }
+      }
+      
       // Filter to get only teachers/instructors
-      const teachers = (staffRes.data || staffRes || []).filter(
+      const teachers = staffData.filter(
         staff => staff.position?.toLowerCase().includes('teacher') || 
                 staff.position?.toLowerCase().includes('instructor')
       )
       setInstructors(teachers)
-      setDepartments(deptRes.data || deptRes || [])
+      
+      // Handle departments response
+      let departmentsData = []
+      if (deptRes) {
+        if (Array.isArray(deptRes)) {
+          departmentsData = deptRes
+        } else if (deptRes.data && Array.isArray(deptRes.data)) {
+          departmentsData = deptRes.data
+        } else if (deptRes.departments && Array.isArray(deptRes.departments)) {
+          departmentsData = deptRes.departments
+        }
+      }
+      setDepartments(departmentsData || [])
+      
+      setError('')
     } catch (error) {
+      console.error('❌ Courses - Error fetching data:', error)
+      setError('Failed to load data. Please check your connection and try again.')
       showToast.error('Failed to load data', error.data?.message || error.message)
+      setCourses([])
+      setInstructors([])
+      setDepartments([])
     } finally {
       setLoading(false)
     }
   }
+
+  // Filter courses based on search term
+  const filteredCourses = useMemo(() => {
+    if (!Array.isArray(courses)) return []
+    if (!searchTerm) return courses
+    
+    const searchLower = searchTerm.toLowerCase()
+    
+    return courses.filter(course => {
+      if (!course) return false
+      
+      const courseName = course.name?.toLowerCase() || ''
+      const courseCode = course.code?.toLowerCase() || ''
+      const instructorName = `${course.instructor?.firstName || ''} ${course.instructor?.lastName || ''}`.toLowerCase()
+      const departmentName = course.department?.name?.toLowerCase() || ''
+      const description = course.description?.toLowerCase() || ''
+      
+      return (
+        courseName.includes(searchLower) ||
+        courseCode.includes(searchLower) ||
+        instructorName.includes(searchLower) ||
+        departmentName.includes(searchLower) ||
+        description.includes(searchLower)
+      )
+    })
+  }, [courses, searchTerm])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -62,6 +160,8 @@ const Courses = () => {
         description: formData.description.trim()
       }
 
+      console.log('💾 Courses - Saving course:', editingCourse ? 'update' : 'create')
+
       if (editingCourse) {
         await adminApi.updateCourse(editingCourse._id, courseData)
         showToast.success('Course updated successfully')
@@ -70,18 +170,12 @@ const Courses = () => {
         showToast.success('Course created successfully')
       }
       
+      await fetchData()
+      resetForm()
       setIsModalOpen(false)
-      setEditingCourse(null)
-      setFormData({
-        name: '',
-        code: '',
-        instructor: '',
-        department: '',
-        credits: '1',
-        description: ''
-      })
-      fetchData()
     } catch (error) {
+      console.error('❌ Courses - Error saving course:', error)
+      setError('Failed to save course. Please try again.')
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -91,116 +185,69 @@ const Courses = () => {
   const handleDelete = async (courseId) => {
     if (window.confirm('Are you sure you want to delete this course?')) {
       try {
+        console.log('🗑️ Courses - Deleting course:', courseId)
         await adminApi.deleteCourse(courseId)
         showToast.success('Course deleted successfully')
         fetchData()
       } catch (error) {
+        console.error('❌ Courses - Error deleting course:', error)
+        setError('Failed to delete course. Please try again.')
         showToast.error('Failed to delete course', error.data?.message || error.message)
       }
     }
   }
 
-  const columns = [
-    {
-      key: 'name',
-      title: 'Course',
-      render: (name, course) => (
-        <div className="flex items-center">
-          <div className="bg-blue-100 rounded-lg p-2 mr-3">
-            <BookOpen className="h-5 w-5 text-blue-600" />
-          </div>
-          <div>
-            <div className="font-medium text-gray-900">{name}</div>
-            <div className="text-sm text-gray-500">Code: {course.code}</div>
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'instructor',
-      title: 'Instructor',
-      render: (instructor) => (
-        <div className="flex items-center">
-          <div className="bg-gray-100 rounded-full p-1 mr-2">
-            <User className="h-3 w-3 text-gray-600" />
-          </div>
-          <div>
-            <div className="font-medium text-gray-900">
-              {instructor?.firstName} {instructor?.lastName}
-            </div>
-            <div className="text-xs text-gray-500">{instructor?.position}</div>
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'department',
-      title: 'Department',
-      render: (department) => (
-        <div className="text-gray-900">{department?.name || 'N/A'}</div>
-      )
-    },
-    {
-      key: 'credits',
-      title: 'Credits',
-      render: (credits) => (
-        <div className="flex items-center">
-          <Hash className="w-4 h-4 text-gray-400 mr-1" />
-          <span className="font-medium">{credits || 1}</span>
-        </div>
-      )
-    },
-    {
-      key: 'description',
-      title: 'Description',
-      render: (description) => (
-        <div className="text-sm text-gray-600 truncate max-w-xs">
-          {description || 'No description'}
-        </div>
-      )
-    },
-    {
-      key: 'actions',
-      title: 'Actions',
-      render: (_, course) => (
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              setEditingCourse(course)
-              setFormData({
-                name: course.name || '',
-                code: course.code || '',
-                instructor: course.instructor?._id || '',
-                department: course.department?._id || '',
-                credits: course.credits?.toString() || '1',
-                description: course.description || ''
-              })
-              setIsModalOpen(true)
-            }}
-            className="p-1 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded"
-            title="Edit"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleDelete(course._id)}
-            className="p-1 text-red-600 hover:text-red-900 hover:bg-red-50 rounded"
-            title="Delete"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      )
-    }
-  ]
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      code: '',
+      instructor: '',
+      department: '',
+      credits: '1',
+      description: ''
+    })
+    setEditingCourse(null)
+  }
+
+  const openCreateModal = () => {
+    console.log('➕ Courses - Opening create modal')
+    resetForm()
+    setIsModalOpen(true)
+  }
+
+  // Calculate stats safely
+  const totalCourses = courses.length || 0
+  const instructorsCount = Array.isArray(courses)
+    ? [...new Set(courses.map(c => c.instructor?._id).filter(Boolean))].length
+    : 0
+  const totalCredits = Array.isArray(courses)
+    ? courses.reduce((total, course) => total + (course.credits || 1), 0)
+    : 0
+  const departmentsCount = Array.isArray(courses)
+    ? [...new Set(courses.map(c => c.department?._id).filter(Boolean))].length
+    : 0
+
+  // Display courses - filtered if search is active
+  const displayCourses = filteredCourses
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Courses</h1>
-          <p className="text-gray-600">Manage academic courses and assignments</p>
+    <div className="p-6">
+      {/* Header Section */}
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center space-y-4 lg:space-y-0 mb-6">
+        <div className="text-center lg:text-left">
+          <h1 className="text-2xl font-bold text-gray-900">Courses Management</h1>
+          <p className="text-gray-600">
+            {searchTerm ? (
+              <span>
+                Showing {filteredCourses.length} of {courses.length} courses
+                {searchTerm && ` for "${searchTerm}"`}
+              </span>
+            ) : (
+              'Manage academic courses and assignments'
+            )}
+          </p>
         </div>
+        
         <div className="flex gap-2">
           <Button
             variant="secondary"
@@ -211,18 +258,7 @@ const Courses = () => {
             Refresh
           </Button>
           <Button
-            onClick={() => {
-              setEditingCourse(null)
-              setFormData({
-                name: '',
-                code: '',
-                instructor: '',
-                department: '',
-                credits: '1',
-                description: ''
-              })
-              setIsModalOpen(true)
-            }}
+            onClick={openCreateModal}
             className="flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -231,67 +267,88 @@ const Courses = () => {
         </div>
       </div>
 
+      {/* Search Status */}
+      {searchTerm && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Search className="w-5 h-5 text-blue-600" />
+              <span className="text-blue-700">
+                Searching for: <strong>"{searchTerm}"</strong> - Found {filteredCourses.length} results
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+          <button 
+            onClick={() => setError('')}
+            className="float-right text-red-800 font-bold px-2"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3">
               <BookOpen className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Courses</p>
-              <p className="text-2xl font-bold">{courses.length}</p>
+              <p className="text-2xl font-bold">{totalCourses}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3">
               <User className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Instructors</p>
-              <p className="text-2xl font-bold">
-                {[...new Set(courses.map(c => c.instructor?._id).filter(Boolean))].length}
-              </p>
+              <p className="text-2xl font-bold">{instructorsCount}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg p-3">
               <Hash className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Credits</p>
-              <p className="text-2xl font-bold">
-                {courses.reduce((total, course) => total + (course.credits || 1), 0)}
-              </p>
+              <p className="text-2xl font-bold">{totalCredits}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3">
               <BookOpen className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Departments</p>
-              <p className="text-2xl font-bold">
-                {[...new Set(courses.map(c => c.department?._id).filter(Boolean))].length}
-              </p>
+              <p className="text-2xl font-bold">{departmentsCount}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Search */}
-      <Card>
+      {/* Search and Filter Card */}
+      <Card className="mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search courses by name, code, or instructor..."
+            placeholder="Search courses by name, code, instructor, department, or description..."
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -299,77 +356,170 @@ const Courses = () => {
         </div>
       </Card>
 
-      {/* Courses Table */}
+      {/* Courses Grid */}
       <Card>
         {loading ? (
           <div className="py-12 text-center">
             <Loader size="lg" />
             <p className="mt-4 text-gray-600">Loading courses...</p>
           </div>
-        ) : courses.length === 0 ? (
+        ) : !Array.isArray(displayCourses) || displayCourses.length === 0 ? (
           <div className="py-12 text-center">
-            <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No courses found</p>
-            <Button
-              onClick={() => {
-                setFormData({
-                  name: '',
-                  code: '',
-                  instructor: '',
-                  department: '',
-                  credits: '1',
-                  description: ''
-                })
-                setIsModalOpen(true)
-              }}
-              className="mt-4"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create First Course
-            </Button>
+            <div className="mx-auto w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+              <BookOpen className="w-12 h-12 text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-lg mb-2">
+              {searchTerm ? 'No courses found' : 'No courses yet'}
+            </p>
+            <p className="text-gray-400 mb-6">
+              {searchTerm 
+                ? `No courses found for "${searchTerm}". Try a different search term.`
+                : 'Get started by creating your first course'
+              }
+            </p>
+            {!searchTerm && (
+              <Button
+                onClick={openCreateModal}
+                className="flex items-center gap-2 mx-auto"
+              >
+                <Plus className="w-4 h-4" />
+                Create First Course
+              </Button>
+            )}
+            {searchTerm && (
+              <Button
+                variant="link"
+                onClick={() => setSearchTerm('')}
+                className="mt-4"
+              >
+                Clear search
+              </Button>
+            )}
           </div>
         ) : (
-          <Table
-            columns={columns}
-            data={courses.filter(course => {
-              if (!searchTerm) return true
-              const searchLower = searchTerm.toLowerCase()
-              const instructorName = `${course.instructor?.firstName || ''} ${course.instructor?.lastName || ''}`.toLowerCase()
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayCourses.map((course) => {
+              const instructorName = course.instructor 
+                ? `${course.instructor.firstName || ''} ${course.instructor.lastName || ''}`.trim()
+                : 'No instructor assigned'
+              const departmentName = course.department?.name || 'No department assigned'
               
               return (
-                course.name?.toLowerCase().includes(searchLower) ||
-                course.code?.toLowerCase().includes(searchLower) ||
-                instructorName.includes(searchLower) ||
-                course.department?.name?.toLowerCase().includes(searchLower)
+                <div key={course._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <BookOpen className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 truncate">{course.name}</h3>
+                          <p className="text-sm text-gray-600 truncate">Code: {course.code || 'No code'}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex space-x-1 flex-shrink-0 ml-2">
+                      <button 
+                        onClick={() => {
+                          setEditingCourse(course)
+                          setFormData({
+                            name: course.name || '',
+                            code: course.code || '',
+                            instructor: course.instructor?._id || '',
+                            department: course.department?._id || '',
+                            credits: course.credits?.toString() || '1',
+                            description: course.description || ''
+                          })
+                          setIsModalOpen(true)
+                        }} 
+                        className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                        title="Edit"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(course._id)} 
+                        className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-gray-400" />
+                      <span><strong>Instructor:</strong> {instructorName}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Department:</span>
+                      <Badge variant="info">
+                        {departmentName}
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Hash className="w-4 h-4 text-gray-400" />
+                      <span><strong>Credits:</strong> {course.credits || 1}</span>
+                    </div>
+                    
+                    {course.description && (
+                      <div className="pt-2 border-t">
+                        <span className="font-medium text-gray-700">Description:</span>
+                        <div className="mt-1 text-xs text-gray-500 line-clamp-2">
+                          {course.description}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {course.instructor?.position && (
+                      <div className="flex items-center gap-2">
+                        <span><strong>Instructor Role:</strong> {course.instructor.position}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {course.createdAt && (
+                    <div className="mt-4 pt-3 border-t text-xs text-gray-500">
+                      Created: {new Date(course.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  )}
+                </div>
               )
             })}
-            keyField="_id"
-            emptyMessage="No courses match your search"
-          />
+          </div>
         )}
       </Card>
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Modal - FIXED with closeOnBackdropClick={false} */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
           setEditingCourse(null)
+          resetForm()
         }}
+        closeOnBackdropClick={false}
         title={editingCourse ? 'Edit Course' : 'Add New Course'}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Course Name"
+              label="Course Name *"
               required
               placeholder="e.g., Introduction to Mathematics"
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
             />
             <Input
-              label="Course Code"
+              label="Course Code *"
               required
               placeholder="e.g., MATH101"
               value={formData.code}
@@ -378,31 +528,39 @@ const Courses = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label="Instructor"
-              required
-              options={[
-                { value: '', label: 'Select instructor' },
-                ...instructors.map(instructor => ({
-                  value: instructor._id,
-                  label: `${instructor.user?.firstName} ${instructor.user?.lastName} - ${instructor.position}`
-                }))
-              ]}
-              value={formData.instructor}
-              onChange={(e) => setFormData({...formData, instructor: e.target.value})}
-            />
-            <Select
-              label="Department"
-              options={[
-                { value: '', label: 'Select department' },
-                ...departments.map(dept => ({
-                  value: dept._id,
-                  label: dept.name
-                }))
-              ]}
-              value={formData.department}
-              onChange={(e) => setFormData({...formData, department: e.target.value})}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Instructor *
+              </label>
+              <select
+                required
+                value={formData.instructor}
+                onChange={(e) => setFormData({...formData, instructor: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select instructor</option>
+                {instructors.map(instructor => (
+                  <option key={instructor._id} value={instructor._id}>
+                    {instructor.user?.firstName || 'Unknown'} {instructor.user?.lastName || ''} - {instructor.position || 'Staff'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Department
+              </label>
+              <select
+                value={formData.department}
+                onChange={(e) => setFormData({...formData, department: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select department</option>
+                {departments.map(dept => (
+                  <option key={dept._id} value={dept._id}>{dept.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -436,6 +594,7 @@ const Courses = () => {
               onClick={() => {
                 setIsModalOpen(false)
                 setEditingCourse(null)
+                resetForm()
               }}
             >
               Cancel

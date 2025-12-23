@@ -1,8 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Search, Plus, Users, GraduationCap, Edit, Trash2, RefreshCw } from 'lucide-react'
-import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
+import { Button, Modal, Input, Card, showToast, Loader } from '@shared'
 import { GRADE_LEVELS } from '@shared'
 import { adminApi } from '../services/adminApi'
+
+// Inline Badge component
+const Badge = ({ children, variant = 'default', className = '' }) => {
+  const variantClasses = {
+    default: 'bg-gray-100 text-gray-800',
+    success: 'bg-green-100 text-green-800',
+    error: 'bg-red-100 text-red-800',
+    warning: 'bg-yellow-100 text-yellow-800',
+    info: 'bg-blue-100 text-blue-800'
+  };
+
+  const baseClasses = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
+  
+  return (
+    <span className={`${baseClasses} ${variantClasses[variant] || variantClasses.default} ${className}`}>
+      {children}
+    </span>
+  );
+};
 
 const Classes = () => {
   const [classes, setClasses] = useState([])
@@ -12,6 +31,7 @@ const Classes = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingClass, setEditingClass] = useState(null)
   const [teachers, setTeachers] = useState([])
+  const [error, setError] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     gradeLevel: '',
@@ -26,18 +46,79 @@ const Classes = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
+      console.log('🔍 Classes - Fetching data...')
       const [classesRes, teachersRes] = await Promise.all([
         adminApi.getClassrooms(),
         adminApi.getStaff()
       ])
-      setClasses(classesRes.data || classesRes || [])
-      setTeachers(teachersRes.data || teachersRes || [])
+      
+      console.log('✅ Classes - Data received:', classesRes)
+      console.log('✅ Classes - Teachers received:', teachersRes)
+      
+      // Handle classes response
+      let classesData = []
+      if (classesRes) {
+        if (Array.isArray(classesRes)) {
+          classesData = classesRes
+        } else if (classesRes.data && Array.isArray(classesRes.data)) {
+          classesData = classesRes.data
+        } else if (classesRes.classrooms && Array.isArray(classesRes.classrooms)) {
+          classesData = classesRes.classrooms
+        } else if (typeof classesRes === 'object') {
+          const arrayProps = Object.values(classesRes).filter(Array.isArray)
+          if (arrayProps.length > 0) {
+            classesData = arrayProps[0]
+          }
+        }
+      }
+      setClasses(classesData || [])
+      
+      // Handle teachers response
+      let teachersData = []
+      if (teachersRes) {
+        if (Array.isArray(teachersRes)) {
+          teachersData = teachersRes
+        } else if (teachersRes.data && Array.isArray(teachersRes.data)) {
+          teachersData = teachersRes.data
+        } else if (teachersRes.staff && Array.isArray(teachersRes.staff)) {
+          teachersData = teachersRes.staff
+        }
+      }
+      setTeachers(teachersData || [])
+      
+      setError('')
     } catch (error) {
+      console.error('❌ Classes - Error fetching data:', error)
+      setError('Failed to load data. Please check your connection and try again.')
       showToast.error('Failed to load data', error.data?.message || error.message)
+      setClasses([])
+      setTeachers([])
     } finally {
       setLoading(false)
     }
   }
+
+  // Filter classes based on search term
+  const filteredClasses = useMemo(() => {
+    if (!Array.isArray(classes)) return []
+    if (!searchTerm) return classes
+    
+    const searchLower = searchTerm.toLowerCase()
+    
+    return classes.filter(cls => {
+      if (!cls) return false
+      
+      const className = cls.name?.toLowerCase() || ''
+      const gradeLevel = cls.gradeLevel?.toLowerCase() || ''
+      const teacherName = `${cls.classTeacher?.firstName || ''} ${cls.classTeacher?.lastName || ''}`.toLowerCase()
+      
+      return (
+        className.includes(searchLower) ||
+        gradeLevel.includes(searchLower) ||
+        teacherName.includes(searchLower)
+      )
+    })
+  }, [classes, searchTerm])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -51,6 +132,8 @@ const Classes = () => {
         capacity: parseInt(formData.capacity) || 30
       }
 
+      console.log('💾 Classes - Saving class:', editingClass ? 'update' : 'create')
+
       if (editingClass) {
         await adminApi.updateClassroom(editingClass._id, classData)
         showToast.success('Class updated successfully')
@@ -59,11 +142,12 @@ const Classes = () => {
         showToast.success('Class created successfully')
       }
       
+      await fetchData()
+      resetForm()
       setIsModalOpen(false)
-      setEditingClass(null)
-      setFormData({ name: '', gradeLevel: '', classTeacher: '', capacity: '' })
-      fetchData()
     } catch (error) {
+      console.error('❌ Classes - Error saving class:', error)
+      setError('Failed to save class. Please try again.')
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -73,101 +157,64 @@ const Classes = () => {
   const handleDelete = async (classId) => {
     if (window.confirm('Are you sure you want to delete this class?')) {
       try {
+        console.log('🗑️ Classes - Deleting class:', classId)
         await adminApi.deleteClassroom(classId)
         showToast.success('Class deleted successfully')
         fetchData()
       } catch (error) {
+        console.error('❌ Classes - Error deleting class:', error)
+        setError('Failed to delete class. Please try again.')
         showToast.error('Failed to delete class', error.data?.message || error.message)
       }
     }
   }
 
-  const columns = [
-    {
-      key: 'name',
-      title: 'Class Name',
-      render: (name, cls) => (
-        <div className="flex items-center">
-          <div className="bg-blue-100 rounded-lg p-2 mr-3">
-            <GraduationCap className="h-5 w-5 text-blue-600" />
-          </div>
-          <div>
-            <div className="font-medium text-gray-900">{name}</div>
-            <div className="text-sm text-gray-500">Grade: {cls.gradeLevel}</div>
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'classTeacher',
-      title: 'Class Teacher',
-      render: (teacher, cls) => (
-        <div>
-          <div className="font-medium text-gray-900">
-            {teacher?.firstName} {teacher?.lastName}
-          </div>
-          <div className="text-sm text-gray-500">{teacher?.position}</div>
-        </div>
-      )
-    },
-    {
-      key: 'students',
-      title: 'Students',
-      render: (students) => (
-        <div className="flex items-center">
-          <Users className="w-4 h-4 text-gray-400 mr-2" />
-          <span className="font-medium">{students?.length || 0}</span>
-          <span className="text-sm text-gray-500 ml-1">students</span>
-        </div>
-      )
-    },
-    {
-      key: 'capacity',
-      title: 'Capacity',
-      render: (capacity) => (
-        <div className="text-gray-900">{capacity}</div>
-      )
-    },
-    {
-      key: 'actions',
-      title: 'Actions',
-      render: (_, cls) => (
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              setEditingClass(cls)
-              setFormData({
-                name: cls.name || '',
-                gradeLevel: cls.gradeLevel || '',
-                classTeacher: cls.classTeacher?._id || '',
-                capacity: cls.capacity?.toString() || ''
-              })
-              setIsModalOpen(true)
-            }}
-            className="p-1 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded"
-            title="Edit"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleDelete(cls._id)}
-            className="p-1 text-red-600 hover:text-red-900 hover:bg-red-50 rounded"
-            title="Delete"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      )
-    }
-  ]
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      gradeLevel: '',
+      classTeacher: '',
+      capacity: ''
+    })
+    setEditingClass(null)
+  }
+
+  const openCreateModal = () => {
+    console.log('➕ Classes - Opening create modal')
+    resetForm()
+    setIsModalOpen(true)
+  }
+
+  // Calculate stats safely
+  const totalClasses = classes.length || 0
+  const totalStudents = Array.isArray(classes) 
+    ? classes.reduce((total, cls) => total + (Array.isArray(cls.students) ? cls.students.length : 0), 0)
+    : 0
+  const classTeachersCount = Array.isArray(classes)
+    ? [...new Set(classes.map(c => c.classTeacher?._id).filter(Boolean))].length
+    : 0
+
+  // Display classes - filtered if search is active
+  const displayClasses = filteredClasses
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Classes</h1>
-          <p className="text-gray-600">Manage classrooms and class assignments</p>
+    <div className="p-6">
+      {/* Header Section */}
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center space-y-4 lg:space-y-0 mb-6">
+        <div className="text-center lg:text-left">
+          <h1 className="text-2xl font-bold text-gray-900">Classes Management</h1>
+          <p className="text-gray-600">
+            {searchTerm ? (
+              <span>
+                Showing {filteredClasses.length} of {classes.length} classes
+                {searchTerm && ` for "${searchTerm}"`}
+              </span>
+            ) : (
+              'Manage classrooms and class assignments'
+            )}
+          </p>
         </div>
+        
         <div className="flex gap-2">
           <Button
             variant="secondary"
@@ -178,11 +225,7 @@ const Classes = () => {
             Refresh
           </Button>
           <Button
-            onClick={() => {
-              setEditingClass(null)
-              setFormData({ name: '', gradeLevel: '', classTeacher: '', capacity: '' })
-              setIsModalOpen(true)
-            }}
+            onClick={openCreateModal}
             className="flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -191,49 +234,72 @@ const Classes = () => {
         </div>
       </div>
 
+      {/* Search Status */}
+      {searchTerm && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Search className="w-5 h-5 text-blue-600" />
+              <span className="text-blue-700">
+                Searching for: <strong>"{searchTerm}"</strong> - Found {filteredClasses.length} results
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+          <button 
+            onClick={() => setError('')}
+            className="float-right text-red-800 font-bold px-2"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3">
               <GraduationCap className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Classes</p>
-              <p className="text-2xl font-bold">{classes.length}</p>
+              <p className="text-2xl font-bold">{totalClasses}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3">
               <Users className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Students</p>
-              <p className="text-2xl font-bold">
-                {classes.reduce((total, cls) => total + (cls.students?.length || 0), 0)}
-              </p>
+              <p className="text-2xl font-bold">{totalStudents}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3">
               <Users className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Class Teachers</p>
-              <p className="text-2xl font-bold">
-                {[...new Set(classes.map(c => c.classTeacher?._id).filter(Boolean))].length}
-              </p>
+              <p className="text-2xl font-bold">{classTeachersCount}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Search */}
-      <Card>
+      {/* Search and Filter Card */}
+      <Card className="mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
@@ -246,86 +312,196 @@ const Classes = () => {
         </div>
       </Card>
 
-      {/* Classes Table */}
+      {/* Classes Grid */}
       <Card>
         {loading ? (
           <div className="py-12 text-center">
             <Loader size="lg" />
             <p className="mt-4 text-gray-600">Loading classes...</p>
           </div>
-        ) : classes.length === 0 ? (
+        ) : !Array.isArray(displayClasses) || displayClasses.length === 0 ? (
           <div className="py-12 text-center">
-            <GraduationCap className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No classes found</p>
-            <Button
-              onClick={() => {
-                setFormData({ name: '', gradeLevel: '', classTeacher: '', capacity: '' })
-                setIsModalOpen(true)
-              }}
-              className="mt-4"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create First Class
-            </Button>
+            <div className="mx-auto w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+              <GraduationCap className="w-12 h-12 text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-lg mb-2">
+              {searchTerm ? 'No classes found' : 'No classes yet'}
+            </p>
+            <p className="text-gray-400 mb-6">
+              {searchTerm 
+                ? `No classes found for "${searchTerm}". Try a different search term.`
+                : 'Get started by creating your first class'
+              }
+            </p>
+            {!searchTerm && (
+              <Button
+                onClick={openCreateModal}
+                className="flex items-center gap-2 mx-auto"
+              >
+                <Plus className="w-4 h-4" />
+                Create First Class
+              </Button>
+            )}
+            {searchTerm && (
+              <Button
+                variant="link"
+                onClick={() => setSearchTerm('')}
+                className="mt-4"
+              >
+                Clear search
+              </Button>
+            )}
           </div>
         ) : (
-          <Table
-            columns={columns}
-            data={classes.filter(cls => 
-              !searchTerm || 
-              cls.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              cls.gradeLevel?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              `${cls.classTeacher?.firstName} ${cls.classTeacher?.lastName}`.toLowerCase().includes(searchTerm.toLowerCase())
-            )}
-            keyField="_id"
-            emptyMessage="No classes match your search"
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayClasses.map((cls) => {
+              const studentsCount = Array.isArray(cls.students) ? cls.students.length : 0
+              const teacherName = cls.classTeacher 
+                ? `${cls.classTeacher.firstName || ''} ${cls.classTeacher.lastName || ''}`.trim()
+                : 'No teacher assigned'
+              
+              return (
+                <div key={cls._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <GraduationCap className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 truncate">{cls.name}</h3>
+                          <p className="text-sm text-gray-600 truncate">Grade: {cls.gradeLevel || 'Not specified'}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex space-x-1 flex-shrink-0 ml-2">
+                      <button 
+                        onClick={() => {
+                          setEditingClass(cls)
+                          setFormData({
+                            name: cls.name || '',
+                            gradeLevel: cls.gradeLevel || '',
+                            classTeacher: cls.classTeacher?._id || '',
+                            capacity: cls.capacity?.toString() || ''
+                          })
+                          setIsModalOpen(true)
+                        }} 
+                        className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                        title="Edit"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(cls._id)} 
+                        className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-gray-400" />
+                      <span><strong>Students:</strong> {studentsCount}/{cls.capacity || 0}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Teacher:</span>
+                      <Badge variant="info">
+                        {teacherName}
+                      </Badge>
+                    </div>
+                    
+                    {cls.classTeacher?.position && (
+                      <div className="flex items-center gap-2">
+                        <span><strong>Position:</strong> {cls.classTeacher.position}</span>
+                      </div>
+                    )}
+                    
+                    {cls.gradeLevel && (
+                      <div className="flex items-center gap-2">
+                        <span><strong>Grade Level:</strong> {cls.gradeLevel}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {cls.createdAt && (
+                    <div className="mt-4 pt-3 border-t text-xs text-gray-500">
+                      Created: {new Date(cls.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
       </Card>
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Modal - FIXED with closeOnBackdropClick={false} */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
           setEditingClass(null)
+          resetForm()
         }}
+        closeOnBackdropClick={false}
         title={editingClass ? 'Edit Class' : 'Add New Class'}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Class Name"
+              label="Class Name *"
               required
               placeholder="e.g., Form 1A"
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
             />
-            <Select
-              label="Grade Level"
-              required
-              options={GRADE_LEVELS.map(grade => ({ value: grade, label: grade }))}
-              value={formData.gradeLevel}
-              onChange={(e) => setFormData({...formData, gradeLevel: e.target.value})}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Grade Level *
+              </label>
+              <select
+                required
+                value={formData.gradeLevel}
+                onChange={(e) => setFormData({...formData, gradeLevel: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select grade level</option>
+                {GRADE_LEVELS.map(grade => (
+                  <option key={grade} value={grade}>{grade}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <Select
-            label="Class Teacher"
-            options={[
-              { value: '', label: 'Select a teacher' },
-              ...teachers.map(teacher => ({
-                value: teacher._id,
-                label: `${teacher.user?.firstName || ''} ${teacher.user?.lastName || ''} - ${teacher.position || ''}`
-              }))
-            ]}
-            value={formData.classTeacher}
-            onChange={(e) => setFormData({...formData, classTeacher: e.target.value})}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Class Teacher
+            </label>
+            <select
+              value={formData.classTeacher}
+              onChange={(e) => setFormData({...formData, classTeacher: e.target.value})}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select a teacher</option>
+              {teachers.map(teacher => (
+                <option key={teacher._id} value={teacher._id}>
+                  {teacher.user?.firstName || 'Unknown'} {teacher.user?.lastName || ''} - {teacher.position || 'Staff'}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <Input
-            label="Capacity"
+            label="Capacity *"
             type="number"
             required
             min="1"
@@ -342,6 +518,7 @@ const Classes = () => {
               onClick={() => {
                 setIsModalOpen(false)
                 setEditingClass(null)
+                resetForm()
               }}
             >
               Cancel

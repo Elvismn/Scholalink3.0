@@ -179,12 +179,8 @@ const Dashboard = () => {
           <Card title="Quick Actions" subtitle="Frequently used functions">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Add Student', icon: <Users className="w-5 h-5" />, color: 'blue' ,
-                  onClick: () => navigate('/students')
-                },
-                { label: 'Add Vehicle', icon: <Car className="w-5 h-5" />, color: 'green' ,
-                  onClick: () => navigate('/vehicles')
-                },
+                { label: 'Add Student', icon: <Users className="w-5 h-5" />, color: 'blue' },
+                { label: 'Add Vehicle', icon: <Car className="w-5 h-5" />, color: 'green'  },
                 { label: 'View Reports', icon: <TrendingUp className="w-5 h-5" />, color: 'purple'},
                 { label: 'Send Notices', icon: <AlertCircle className="w-5 h-5" />, color: 'yellow' },
                 { label: 'Manage Staff', icon: <Users className="w-5 h-5" />, color: 'red' },

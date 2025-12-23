@@ -17,6 +17,7 @@ const Curriculum = () => {
     title: '',
     academicYear: new Date().getFullYear().toString(),
     gradeLevel: '',
+    subjects: '',
     description: '',
     status: 'Draft'
   })

@@ -1,7 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Search, Plus, Building, Users, DollarSign, Edit, Trash2, RefreshCw } from 'lucide-react'
-import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
+import { Button, Modal, Input, Card, showToast, Loader } from '@shared'
 import { adminApi } from '../services/adminApi'
+
+// Inline Badge component
+const Badge = ({ children, variant = 'default', className = '' }) => {
+  const variantClasses = {
+    default: 'bg-gray-100 text-gray-800',
+    success: 'bg-green-100 text-green-800',
+    error: 'bg-red-100 text-red-800',
+    warning: 'bg-yellow-100 text-yellow-800',
+    info: 'bg-blue-100 text-blue-800'
+  };
+
+  const baseClasses = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
+  
+  return (
+    <span className={`${baseClasses} ${variantClasses[variant] || variantClasses.default} ${className}`}>
+      {children}
+    </span>
+  );
+};
 
 const Departments = () => {
   const [departments, setDepartments] = useState([])
@@ -11,6 +30,7 @@ const Departments = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingDept, setEditingDept] = useState(null)
   const [staff, setStaff] = useState([])
+  const [error, setError] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     head: '',
@@ -26,18 +46,80 @@ const Departments = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
+      console.log('🔍 Departments - Fetching data...')
       const [deptRes, staffRes] = await Promise.all([
         adminApi.getDepartments(),
         adminApi.getStaff()
       ])
-      setDepartments(deptRes.data || deptRes || [])
-      setStaff(staffRes.data || staffRes || [])
+      
+      console.log('✅ Departments - Data received:', deptRes)
+      
+      // Handle departments response
+      let departmentsData = []
+      if (deptRes) {
+        if (Array.isArray(deptRes)) {
+          departmentsData = deptRes
+        } else if (deptRes.data && Array.isArray(deptRes.data)) {
+          departmentsData = deptRes.data
+        } else if (deptRes.departments && Array.isArray(deptRes.departments)) {
+          departmentsData = deptRes.departments
+        } else if (typeof deptRes === 'object') {
+          const arrayProps = Object.values(deptRes).filter(Array.isArray)
+          if (arrayProps.length > 0) {
+            departmentsData = arrayProps[0]
+          }
+        }
+      }
+      setDepartments(departmentsData || [])
+      
+      // Handle staff response
+      let staffData = []
+      if (staffRes) {
+        if (Array.isArray(staffRes)) {
+          staffData = staffRes
+        } else if (staffRes.data && Array.isArray(staffRes.data)) {
+          staffData = staffRes.data
+        } else if (staffRes.staff && Array.isArray(staffRes.staff)) {
+          staffData = staffRes.staff
+        }
+      }
+      setStaff(staffData || [])
+      
+      setError('')
     } catch (error) {
+      console.error('❌ Departments - Error fetching data:', error)
+      setError('Failed to load data. Please check your connection and try again.')
       showToast.error('Failed to load data', error.data?.message || error.message)
+      setDepartments([])
+      setStaff([])
     } finally {
       setLoading(false)
     }
   }
+
+  // Filter departments based on search term
+  const filteredDepartments = useMemo(() => {
+    if (!Array.isArray(departments)) return []
+    if (!searchTerm) return departments
+    
+    const searchLower = searchTerm.toLowerCase()
+    
+    return departments.filter(dept => {
+      if (!dept) return false
+      
+      const deptName = dept.name?.toLowerCase() || ''
+      const deptDescription = dept.description?.toLowerCase() || ''
+      const contactEmail = dept.contactEmail?.toLowerCase() || ''
+      const hodName = `${dept.head?.firstName || ''} ${dept.head?.lastName || ''}`.toLowerCase()
+      
+      return (
+        deptName.includes(searchLower) ||
+        deptDescription.includes(searchLower) ||
+        contactEmail.includes(searchLower) ||
+        hodName.includes(searchLower)
+      )
+    })
+  }, [departments, searchTerm])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -52,6 +134,8 @@ const Departments = () => {
         budget: formData.budget ? parseFloat(formData.budget) : 0
       }
 
+      console.log('💾 Departments - Saving department:', editingDept ? 'update' : 'create')
+
       if (editingDept) {
         await adminApi.updateDepartment(editingDept._id, deptData)
         showToast.success('Department updated successfully')
@@ -60,17 +144,12 @@ const Departments = () => {
         showToast.success('Department created successfully')
       }
       
+      await fetchData()
+      resetForm()
       setIsModalOpen(false)
-      setEditingDept(null)
-      setFormData({
-        name: '',
-        head: '',
-        description: '',
-        contactEmail: '',
-        budget: ''
-      })
-      fetchData()
     } catch (error) {
+      console.error('❌ Departments - Error saving department:', error)
+      setError('Failed to save department. Please try again.')
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -80,113 +159,68 @@ const Departments = () => {
   const handleDelete = async (deptId) => {
     if (window.confirm('Are you sure you want to delete this department?')) {
       try {
+        console.log('🗑️ Departments - Deleting department:', deptId)
         await adminApi.deleteDepartment(deptId)
         showToast.success('Department deleted successfully')
         fetchData()
       } catch (error) {
+        console.error('❌ Departments - Error deleting department:', error)
+        setError('Failed to delete department. Please try again.')
         showToast.error('Failed to delete department', error.data?.message || error.message)
       }
     }
   }
 
-  const columns = [
-    {
-      key: 'name',
-      title: 'Department',
-      render: (name, dept) => (
-        <div className="flex items-center">
-          <div className="bg-blue-100 rounded-lg p-2 mr-3">
-            <Building className="h-5 w-5 text-blue-600" />
-          </div>
-          <div>
-            <div className="font-medium text-gray-900">{name}</div>
-            <div className="text-sm text-gray-500">{dept.description || 'No description'}</div>
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'head',
-      title: 'Head of Department',
-      render: (head) => (
-        <div>
-          <div className="font-medium text-gray-900">
-            {head?.firstName} {head?.lastName}
-          </div>
-          <div className="text-sm text-gray-500">{head?.position || 'N/A'}</div>
-        </div>
-      )
-    },
-    {
-      key: 'contactEmail',
-      title: 'Contact',
-      render: (email) => (
-        <div className="text-gray-900">{email || 'N/A'}</div>
-      )
-    },
-    {
-      key: 'budget',
-      title: 'Budget',
-      render: (budget) => (
-        <div className="flex items-center">
-          <DollarSign className="w-4 h-4 text-gray-400 mr-1" />
-          <span className="font-medium">{budget?.toLocaleString() || '0'}</span>
-          <span className="text-sm text-gray-500 ml-1">KES</span>
-        </div>
-      )
-    },
-    {
-      key: 'staffCount',
-      title: 'Staff',
-      render: (_, dept) => (
-        <div className="flex items-center">
-          <Users className="w-4 h-4 text-gray-400 mr-1" />
-          <span className="font-medium">{dept.staffCount || 0}</span>
-          <span className="text-sm text-gray-500 ml-1">members</span>
-        </div>
-      )
-    },
-    {
-      key: 'actions',
-      title: 'Actions',
-      render: (_, dept) => (
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              setEditingDept(dept)
-              setFormData({
-                name: dept.name || '',
-                head: dept.head?._id || '',
-                description: dept.description || '',
-                contactEmail: dept.contactEmail || '',
-                budget: dept.budget?.toString() || ''
-              })
-              setIsModalOpen(true)
-            }}
-            className="p-1 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded"
-            title="Edit"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleDelete(dept._id)}
-            className="p-1 text-red-600 hover:text-red-900 hover:bg-red-50 rounded"
-            title="Delete"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      )
-    }
-  ]
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      head: '',
+      description: '',
+      contactEmail: '',
+      budget: ''
+    })
+    setEditingDept(null)
+  }
+
+  const openCreateModal = () => {
+    console.log('➕ Departments - Opening create modal')
+    resetForm()
+    setIsModalOpen(true)
+  }
+
+  // Calculate stats safely
+  const totalDepartments = departments.length || 0
+  const totalStaff = Array.isArray(departments)
+    ? departments.reduce((total, dept) => total + (dept.staffCount || 0), 0)
+    : 0
+  const totalBudget = Array.isArray(departments)
+    ? departments.reduce((total, dept) => total + (dept.budget || 0), 0)
+    : 0
+  const averageStaff = totalDepartments > 0
+    ? (totalStaff / totalDepartments).toFixed(1)
+    : '0.0'
+
+  // Display departments - filtered if search is active
+  const displayDepartments = filteredDepartments
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Departments</h1>
-          <p className="text-gray-600">Manage school departments and leadership</p>
+    <div className="p-6">
+      {/* Header Section */}
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center space-y-4 lg:space-y-0 mb-6">
+        <div className="text-center lg:text-left">
+          <h1 className="text-2xl font-bold text-gray-900">Departments Management</h1>
+          <p className="text-gray-600">
+            {searchTerm ? (
+              <span>
+                Showing {filteredDepartments.length} of {departments.length} departments
+                {searchTerm && ` for "${searchTerm}"`}
+              </span>
+            ) : (
+              'Manage school departments and leadership'
+            )}
+          </p>
         </div>
+        
         <div className="flex gap-2">
           <Button
             variant="secondary"
@@ -197,17 +231,7 @@ const Departments = () => {
             Refresh
           </Button>
           <Button
-            onClick={() => {
-              setEditingDept(null)
-              setFormData({
-                name: '',
-                head: '',
-                description: '',
-                contactEmail: '',
-                budget: ''
-              })
-              setIsModalOpen(true)
-            }}
+            onClick={openCreateModal}
             className="flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -216,33 +240,58 @@ const Departments = () => {
         </div>
       </div>
 
+      {/* Search Status */}
+      {searchTerm && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Search className="w-5 h-5 text-blue-600" />
+              <span className="text-blue-700">
+                Searching for: <strong>"{searchTerm}"</strong> - Found {filteredDepartments.length} results
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+          <button 
+            onClick={() => setError('')}
+            className="float-right text-red-800 font-bold px-2"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3">
               <Building className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Departments</p>
-              <p className="text-2xl font-bold">{departments.length}</p>
+              <p className="text-2xl font-bold">{totalDepartments}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3">
               <Users className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Staff</p>
-              <p className="text-2xl font-bold">
-                {departments.reduce((total, dept) => total + (dept.staffCount || 0), 0)}
-              </p>
+              <p className="text-2xl font-bold">{totalStaff}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg p-3">
               <DollarSign className="h-6 w-6 text-white" />
@@ -250,36 +299,31 @@ const Departments = () => {
             <div className="ml-4">
               <p className="text-sm text-gray-600">Total Budget</p>
               <p className="text-2xl font-bold">
-                KES {departments.reduce((total, dept) => total + (dept.budget || 0), 0).toLocaleString()}
+                KES {totalBudget.toLocaleString()}
               </p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3">
               <Users className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
               <p className="text-sm text-gray-600">Average Staff</p>
-              <p className="text-2xl font-bold">
-                {departments.length > 0 
-                  ? (departments.reduce((total, dept) => total + (dept.staffCount || 0), 0) / departments.length).toFixed(1)
-                  : '0.0'
-                }
-              </p>
+              <p className="text-2xl font-bold">{averageStaff}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Search */}
-      <Card>
+      {/* Search and Filter Card */}
+      <Card className="mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search departments by name or description..."
+            placeholder="Search departments by name, description, email, or HoD name..."
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -287,80 +331,181 @@ const Departments = () => {
         </div>
       </Card>
 
-      {/* Departments Table */}
+      {/* Departments Grid */}
       <Card>
         {loading ? (
           <div className="py-12 text-center">
             <Loader size="lg" />
             <p className="mt-4 text-gray-600">Loading departments...</p>
           </div>
-        ) : departments.length === 0 ? (
+        ) : !Array.isArray(displayDepartments) || displayDepartments.length === 0 ? (
           <div className="py-12 text-center">
-            <Building className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">No departments found</p>
-            <Button
-              onClick={() => {
-                setFormData({
-                  name: '',
-                  head: '',
-                  description: '',
-                  contactEmail: '',
-                  budget: ''
-                })
-                setIsModalOpen(true)
-              }}
-              className="mt-4"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create First Department
-            </Button>
+            <div className="mx-auto w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+              <Building className="w-12 h-12 text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-lg mb-2">
+              {searchTerm ? 'No departments found' : 'No departments yet'}
+            </p>
+            <p className="text-gray-400 mb-6">
+              {searchTerm 
+                ? `No departments found for "${searchTerm}". Try a different search term.`
+                : 'Get started by creating your first department'
+              }
+            </p>
+            {!searchTerm && (
+              <Button
+                onClick={openCreateModal}
+                className="flex items-center gap-2 mx-auto"
+              >
+                <Plus className="w-4 h-4" />
+                Create First Department
+              </Button>
+            )}
+            {searchTerm && (
+              <Button
+                variant="link"
+                onClick={() => setSearchTerm('')}
+                className="mt-4"
+              >
+                Clear search
+              </Button>
+            )}
           </div>
         ) : (
-          <Table
-            columns={columns}
-            data={departments.filter(dept => 
-              !searchTerm || 
-              dept.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              dept.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              dept.contactEmail?.toLowerCase().includes(searchTerm.toLowerCase())
-            )}
-            keyField="_id"
-            emptyMessage="No departments match your search"
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayDepartments.map((dept) => {
+              const hodName = dept.head 
+                ? `${dept.head.firstName || ''} ${dept.head.lastName || ''}`.trim()
+                : 'No HoD assigned'
+              const hodPosition = dept.head?.position || ''
+              
+              return (
+                <div key={dept._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <Building className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 truncate">{dept.name}</h3>
+                          <p className="text-sm text-gray-600 truncate">
+                            {dept.description || 'No description'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex space-x-1 flex-shrink-0 ml-2">
+                      <button 
+                        onClick={() => {
+                          setEditingDept(dept)
+                          setFormData({
+                            name: dept.name || '',
+                            head: dept.head?._id || '',
+                            description: dept.description || '',
+                            contactEmail: dept.contactEmail || '',
+                            budget: dept.budget?.toString() || ''
+                          })
+                          setIsModalOpen(true)
+                        }} 
+                        className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                        title="Edit"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(dept._id)} 
+                        className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-gray-400" />
+                      <span><strong>Head of Department:</strong> {hodName}</span>
+                    </div>
+                    
+                    {hodPosition && (
+                      <div className="flex items-center gap-2">
+                        <span><strong>HoD Position:</strong> {hodPosition}</span>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-gray-400" />
+                      <span><strong>Staff Members:</strong> {dept.staffCount || 0}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-gray-400" />
+                      <span><strong>Annual Budget:</strong> KES {(dept.budget || 0).toLocaleString()}</span>
+                    </div>
+                    
+                    {dept.contactEmail && (
+                      <div className="flex items-center gap-2">
+                        <span><strong>Contact:</strong> {dept.contactEmail}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {dept.createdAt && (
+                    <div className="mt-4 pt-3 border-t text-xs text-gray-500">
+                      Created: {new Date(dept.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
       </Card>
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Modal - FIXED with closeOnBackdropClick={false} */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
           setEditingDept(null)
+          resetForm()
         }}
+        closeOnBackdropClick={false}
         title={editingDept ? 'Edit Department' : 'Add New Department'}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Department Name"
+            label="Department Name *"
             required
             placeholder="e.g., Mathematics Department"
             value={formData.name}
             onChange={(e) => setFormData({...formData, name: e.target.value})}
           />
 
-          <Select
-            label="Head of Department"
-            options={[
-              { value: '', label: 'Select HoD' },
-              ...staff.map(staffMember => ({
-                value: staffMember._id,
-                label: `${staffMember.user?.firstName} ${staffMember.user?.lastName} - ${staffMember.position}`
-              }))
-            ]}
-            value={formData.head}
-            onChange={(e) => setFormData({...formData, head: e.target.value})}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Head of Department
+            </label>
+            <select
+              value={formData.head}
+              onChange={(e) => setFormData({...formData, head: e.target.value})}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select HoD</option>
+              {staff.map(staffMember => (
+                <option key={staffMember._id} value={staffMember._id}>
+                  {staffMember.user?.firstName || 'Unknown'} {staffMember.user?.lastName || ''} - {staffMember.position || 'Staff'}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <Input
             label="Contact Email"
@@ -401,6 +546,7 @@ const Departments = () => {
               onClick={() => {
                 setIsModalOpen(false)
                 setEditingDept(null)
+                resetForm()
               }}
             >
               Cancel

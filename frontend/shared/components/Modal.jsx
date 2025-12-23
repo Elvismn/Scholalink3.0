@@ -1,4 +1,4 @@
-import React, { Fragment } from 'react';
+import React from 'react';
 
 const Modal = ({
   isOpen,
@@ -19,23 +19,15 @@ const Modal = ({
   };
 
   const handleBackdropClick = (e) => {
-    // Only close if clicking directly on the backdrop
     if (closeOnBackdropClick && e.target === e.currentTarget) {
+      console.log('🎯 Backdrop clicked');
       onClose();
     }
   };
 
-  // Handle click on modal content - only stop propagation for certain elements
-  const handleModalContentClick = (e) => {
-    // Don't stop propagation for select elements (dropdowns)
-    if (e.target.tagName === 'SELECT' || 
-        e.target.tagName === 'OPTION' ||
-        e.target.closest('select')) {
-      return; // Let select clicks bubble up normally
-    }
-    
-    // Only stop propagation for other elements to prevent backdrop click
-    e.stopPropagation();
+  const handleCloseClick = (e) => {
+    console.log('❌ X button clicked');
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -50,8 +42,7 @@ const Modal = ({
       
       <div className="flex min-h-full items-center justify-center p-4">
         <div 
-          className={`w-full bg-white rounded-2xl shadow-xl transform transition-all ${sizes[size]} ${className}`}
-          onClick={handleModalContentClick}  // ← Updated handler
+          className={`relative w-full bg-white rounded-2xl shadow-xl transform transition-all ${sizes[size]} ${className}`}
         >
           {/* Header */}
           {(title || showCloseButton) && (
@@ -63,9 +54,9 @@ const Modal = ({
               )}
               {showCloseButton && (
                 <button
-                  onClick={onClose}
+                  onClick={handleCloseClick}
                   className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
-                  // No stopPropagation needed here - we want this click to work
+                  aria-label="Close"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

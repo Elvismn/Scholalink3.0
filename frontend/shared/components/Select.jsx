@@ -10,6 +10,9 @@ const Select = forwardRef(({
   containerClassName = '',
   size = 'md',
   fullWidth = true,
+  value,
+  defaultValue,
+  onChange,
   ...props
 }, ref) => {
   const sizes = {
@@ -40,7 +43,9 @@ const Select = forwardRef(({
         <select
           ref={ref}
           className={selectClasses}
-          defaultValue=""
+          // Don't use both value and defaultValue - use controlled component pattern
+          value={value !== undefined ? value : defaultValue}
+          onChange={onChange}
           {...props}
         >
           <option value="" disabled>

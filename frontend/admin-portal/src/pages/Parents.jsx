@@ -49,51 +49,71 @@ const Parents = () => {
     }
   })
 
+  // Debug: Track modal state changes
+  useEffect(() => {
+    console.log('🔄 isModalOpen changed to:', isModalOpen);
+  }, [isModalOpen]);
+
   useEffect(() => {
     fetchData()
   }, [])
 
   const fetchData = async () => {
-    setLoading(true)
-    try {
-      const [parentsRes, studentsRes, usersRes] = await Promise.all([
-        adminApi.getParents(),
-        adminApi.getStudents(),
-        adminApi.getUsers({ role: 'parent' })
-      ])
+  setLoading(true)
+  try {
+    const [parentsRes, studentsRes, usersRes] = await Promise.all([
+      adminApi.getParents(),
+      adminApi.getStudents(),
+      adminApi.getUsers({ role: 'parent' })
+    ])
+    
+    console.log('📦 Parents API Response:', parentsRes)
+    console.log('📦 Students API Response:', studentsRes)
+    console.log('📦 Users API Response:', usersRes)
+    
+    // FIXED: Handle your actual API response structure
+    const normalizeArray = (res) => {
+      if (!res) return []
       
-      console.log('📦 Parents API Response:', parentsRes)
-      console.log('📦 Students API Response:', studentsRes)
-      console.log('📦 Users API Response:', usersRes)
+      // Direct array
+      if (Array.isArray(res)) return res
       
-      // Normalize responses to arrays to avoid `.map` errors when the API returns objects
-      const normalizeArray = (res) => {
-        if (Array.isArray(res)) return res
-        if (!res) return []
+      // Your actual structure: { data: { parents: [...] } }
+      if (res.data) {
+        // Check for nested arrays in data object
+        if (Array.isArray(res.data.parents)) return res.data.parents
+        if (Array.isArray(res.data.students)) return res.data.students
+        if (Array.isArray(res.data.users)) return res.data.users
+        
+        // Fallback to data if it's an array
         if (Array.isArray(res.data)) return res.data
-        if (Array.isArray(res.users)) return res.users
-        if (res.data && Array.isArray(res.data.users)) return res.data.users
-        return []
       }
-
-      const parentsData = normalizeArray(parentsRes)
-      const studentsData = normalizeArray(studentsRes)
-      const usersData = normalizeArray(usersRes)
       
-      setParents(parentsData)
-      setStudents(studentsData)
-      setUsers(usersData)
-      
-    } catch (error) {
-      console.error('❌ Error fetching data:', error)
-      showToast.error('Failed to load data', error.data?.message || error.message)
-      setParents([])
-      setStudents([])
-      setUsers([])
-    } finally {
-      setLoading(false)
+      return []
     }
+
+    const parentsData = normalizeArray(parentsRes)
+    const studentsData = normalizeArray(studentsRes)
+    const usersData = normalizeArray(usersRes)
+    
+    console.log('✅ Normalized Parents:', parentsData)
+    console.log('✅ Normalized Students:', studentsData)
+    console.log('✅ Normalized Users:', usersData)
+    
+    setParents(parentsData)
+    setStudents(studentsData)
+    setUsers(usersData)
+    
+  } catch (error) {
+    console.error('❌ Error fetching data:', error)
+    showToast.error('Failed to load data', error.data?.message || error.message)
+    setParents([])
+    setStudents([])
+    setUsers([])
+  } finally {
+    setLoading(false)
   }
+}
 
   // Filter parents based on search term
   const filteredParents = useMemo(() => {
@@ -503,19 +523,28 @@ const Parents = () => {
         )}
       </Card>
 
-      {/* Add/Edit Modal with proper form fields */}
+      {/* Add/Edit Modal with proper form fields - FIXED */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
-          setIsModalOpen(false)
-          setEditingParent(null)
-          resetForm()
+          console.log('🟢 Modal onClose triggered');
+          setIsModalOpen(false);
+          setEditingParent(null);
+          resetForm();
         }}
-        closeOnBackdropClick={false}
         title={editingParent ? 'Edit Parent' : 'Add New Parent'}
         size="lg"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form 
+          onSubmit={handleSubmit} 
+          className="space-y-4"
+          onKeyDown={(e) => {
+            // Prevent Enter key from submitting (for debugging)
+            if (e.key === 'Enter' && e.target.type !== 'textarea') {
+              e.preventDefault();
+            }
+          }}
+        >
           {/* User Selection */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">
@@ -526,7 +555,7 @@ const Parents = () => {
               value={formData.userId}
               onChange={(e) => setFormData({...formData, userId: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              disabled={Boolean(editingParent)}
+              disabled={editingParent !== null}
             >
               <option value="">Choose a user account...</option>
               {Array.isArray(users) && users.map(user => (
@@ -682,15 +711,17 @@ const Parents = () => {
             </div>
           )}
 
-          {/* Submit Buttons */}
+          {/* Submit Buttons - FIXED */}
           <div className="pt-4 flex justify-end gap-3 border-t">
             <Button
               variant="secondary"
               type="button"
               onClick={() => {
-                setIsModalOpen(false)
-                setEditingParent(null)
-                resetForm()
+                console.log('🔘 Cancel button clicked');
+                // Trigger the same cleanup as the X button
+                setIsModalOpen(false);
+                setEditingParent(null);
+                resetForm();
               }}
             >
               Cancel

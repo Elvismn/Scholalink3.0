@@ -1,6 +1,7 @@
 const User = require("../../models/User");
 const Parent = require("../../models/Parent");
 const Staff = require("../../models/Staff");
+const bcrypt = require("bcrypt"); // ✅ MOVE THIS TO TOP LEVEL
 
 const createUser = async (req, res) => {
   try {
@@ -14,7 +15,8 @@ const createUser = async (req, res) => {
       });
     }
 
-    const user = await User.create({
+    // ✅ Use User.createUser()
+    const user = await User.createUser({
       email,
       password,
       role,
@@ -128,7 +130,7 @@ const getUser = async (req, res) => {
 
 const updateUser = async (req, res) => {
   try {
-    const { role, isActive, profile } = req.body;
+    const { role, isActive, profile, password } = req.body;
     const userId = req.params.id;
 
     if (userId === req.user.id) {
@@ -142,6 +144,16 @@ const updateUser = async (req, res) => {
     if (role) updateData.role = role;
     if (typeof isActive !== 'undefined') updateData.isActive = isActive;
     if (profile) updateData.profile = profile;
+    
+    // ✅ REMOVE password hashing here - let the pre-save hook handle it
+    // OR remove this block entirely if you're not using pre-save hook
+    if (password) {
+      updateData.password = password; // Let pre-save hook hash it
+      // OR if no pre-save hook: hash manually:
+      // const bcrypt = require('bcrypt');
+      // const salt = await bcrypt.genSalt(12);
+      // updateData.password = await bcrypt.hash(password, salt);
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,

@@ -22,14 +22,24 @@ const auth = async (req, res, next) => {
       });
     }
 
-    // Update last login
-    user.lastLogin = new Date();
-    user.loginCount += 1;
-    await user.save();
+    // ✅ FIXED: Update last login WITHOUT triggering pre-save hook
+    await User.findByIdAndUpdate(
+      user._id,
+      {
+        $set: {
+          lastLogin: new Date()
+        },
+        $inc: {
+          loginCount: 1
+        }
+      },
+      { new: true }
+    );
 
     req.user = user;
     next();
   } catch (error) {
+    console.error('Auth middleware error:', error.message);
     res.status(401).json({ 
       success: false,
       error: 'Token is not valid.' 

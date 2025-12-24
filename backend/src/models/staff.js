@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const staffSchema = new mongoose.Schema({
-  name: {
+  user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true

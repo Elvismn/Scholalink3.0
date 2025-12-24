@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ["super_admin", "admin", "staff", "teacher", "parent" ],
+    enum: ["super_admin", "admin", "staff", "teacher", "parent"],
     required: true
   },
   profile: {
@@ -38,15 +38,12 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
-// Static method to create user with hashed password
+// ✅ SIMPLER: No pre-save hook, handle hashing in createUser only
 userSchema.statics.createUser = async function(userData) {
   try {
-    // Hash password before creating user
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(userData.password, salt);
     
-    // Create user with hashed password
     const user = new this({
       ...userData,
       password: hashedPassword
@@ -58,7 +55,6 @@ userSchema.statics.createUser = async function(userData) {
   }
 };
 
-// Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };

@@ -54,36 +54,34 @@ const Departments = () => {
       
       console.log('✅ Departments - Data received:', deptRes)
       
-      // Handle departments response
-      let departmentsData = []
-      if (deptRes) {
-        if (Array.isArray(deptRes)) {
-          departmentsData = deptRes
-        } else if (deptRes.data && Array.isArray(deptRes.data)) {
-          departmentsData = deptRes.data
-        } else if (deptRes.departments && Array.isArray(deptRes.departments)) {
-          departmentsData = deptRes.departments
-        } else if (typeof deptRes === 'object') {
-          const arrayProps = Object.values(deptRes).filter(Array.isArray)
-          if (arrayProps.length > 0) {
-            departmentsData = arrayProps[0]
-          }
+      // FIXED: Use the same normalization as Parents.jsx
+      const normalizeArray = (res) => {
+        if (!res) return []
+        
+        // Direct array
+        if (Array.isArray(res)) return res
+        
+        // Your structure: { data: { departments: [...] } } or { data: { staff: [...] } }
+        if (res.data) {
+          // Check for nested arrays in data object
+          if (Array.isArray(res.data.departments)) return res.data.departments
+          if (Array.isArray(res.data.staff)) return res.data.staff
+          
+          // Fallback to data if it's an array
+          if (Array.isArray(res.data)) return res.data
         }
+        
+        return []
       }
-      setDepartments(departmentsData || [])
+
+      const departmentsData = normalizeArray(deptRes)
+      const staffData = normalizeArray(staffRes)
       
-      // Handle staff response
-      let staffData = []
-      if (staffRes) {
-        if (Array.isArray(staffRes)) {
-          staffData = staffRes
-        } else if (staffRes.data && Array.isArray(staffRes.data)) {
-          staffData = staffRes.data
-        } else if (staffRes.staff && Array.isArray(staffRes.staff)) {
-          staffData = staffRes.staff
-        }
-      }
-      setStaff(staffData || [])
+      console.log('✅ Normalized Departments:', departmentsData)
+      console.log('✅ Normalized Staff:', staffData)
+      
+      setDepartments(departmentsData)
+      setStaff(staffData)
       
       setError('')
     } catch (error) {
@@ -110,7 +108,7 @@ const Departments = () => {
       const deptName = dept.name?.toLowerCase() || ''
       const deptDescription = dept.description?.toLowerCase() || ''
       const contactEmail = dept.contactEmail?.toLowerCase() || ''
-      const hodName = `${dept.head?.firstName || ''} ${dept.head?.lastName || ''}`.toLowerCase()
+      const hodName = `${dept.head?.user?.firstName || ''} ${dept.head?.user?.lastName || ''}`.toLowerCase()
       
       return (
         deptName.includes(searchLower) ||
@@ -128,13 +126,17 @@ const Departments = () => {
     try {
       const deptData = {
         name: formData.name.trim(),
-        head: formData.head,
         description: formData.description.trim(),
         contactEmail: formData.contactEmail.trim(),
         budget: formData.budget ? parseFloat(formData.budget) : 0
       }
 
-      console.log('💾 Departments - Saving department:', editingDept ? 'update' : 'create')
+      // Only include head if it's selected (not empty string)
+      if (formData.head && formData.head.trim() !== '') {
+        deptData.head = formData.head
+      }
+
+      console.log('💾 Departments - Saving department:', editingDept ? 'update' : 'create', deptData)
 
       if (editingDept) {
         await adminApi.updateDepartment(editingDept._id, deptData)
@@ -375,7 +377,7 @@ const Departments = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {displayDepartments.map((dept) => {
               const hodName = dept.head 
-                ? `${dept.head.firstName || ''} ${dept.head.lastName || ''}`.trim()
+                ? `${dept.head.user?.firstName || ''} ${dept.head.user?.lastName || ''}`.trim()
                 : 'No HoD assigned'
               const hodPosition = dept.head?.position || ''
               
@@ -468,7 +470,7 @@ const Departments = () => {
         )}
       </Card>
 
-      {/* Add/Edit Modal - FIXED with closeOnBackdropClick={false} */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
@@ -491,15 +493,15 @@ const Departments = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Head of Department
+              Head of Department (Optional)
             </label>
             <select
               value={formData.head}
               onChange={(e) => setFormData({...formData, head: e.target.value})}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Select HoD</option>
-              {staff.map(staffMember => (
+              <option value="">Select HoD (Optional)</option>
+              {Array.isArray(staff) && staff.map(staffMember => (
                 <option key={staffMember._id} value={staffMember._id}>
                   {staffMember.user?.firstName || 'Unknown'} {staffMember.user?.lastName || ''} - {staffMember.position || 'Staff'}
                 </option>

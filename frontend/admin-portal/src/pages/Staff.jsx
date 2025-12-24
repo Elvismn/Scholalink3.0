@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Plus, Briefcase, User, Mail, Phone, Edit, Trash2, RefreshCw } from 'lucide-react'
+import { Search, Plus, Briefcase, User, Mail, Phone, Edit, Trash2, RefreshCw, GraduationCap, BookOpen, Award, Calendar, DollarSign, Building } from 'lucide-react'
 import { Button, Modal, Input, Card, showToast, Loader } from '@shared'
 import { STAFF_POSITIONS } from '@shared'
 import { adminApi } from '../services/adminApi'
@@ -31,66 +31,119 @@ const Staff = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingStaff, setEditingStaff] = useState(null)
   const [departments, setDepartments] = useState([])
+  const [users, setUsers] = useState([])
+  const [courses, setCourses] = useState([])
+  
+  // Form data matching backend schema
   const [formData, setFormData] = useState({
+    user: '', // User ObjectId (required)
     employeeId: '',
     position: '',
     department: '',
-    hireDate: '',
-    salary: ''
+    hireDate: new Date().toISOString().split('T')[0],
+    salary: '',
+    qualifications: [],
+    subjects: []
   })
 
+  // Temporary qualification input
+  const [qualificationInput, setQualificationInput] = useState('')
+
   useEffect(() => {
-    fetchData()
+    fetchAllData()
   }, [])
 
-  const fetchData = async () => {
+  const fetchAllData = async () => {
     setLoading(true)
     try {
-      const [staffRes, deptRes] = await Promise.all([
+      // Fetch all data in parallel
+      const [staffRes, deptRes, usersRes, coursesRes] = await Promise.all([
         adminApi.getStaff(),
-        adminApi.getDepartments()
+        adminApi.getDepartments(),
+        adminApi.getUsers({ role: 'staff' }),
+        adminApi.getCourses()
       ])
       
-      console.log('Staff API Response:', staffRes)
-      console.log('Departments API Response:', deptRes)
+      console.log('📦 Staff API Response:', staffRes)
+      console.log('📦 Departments API Response:', deptRes)
+      console.log('📦 Users API Response:', usersRes)
+      console.log('📦 Courses API Response:', coursesRes)
       
-      // Handle staff response - check different response formats
-      let staffData = []
-      if (staffRes) {
-        if (Array.isArray(staffRes)) {
-          staffData = staffRes
-        } else if (staffRes.data && Array.isArray(staffRes.data)) {
-          staffData = staffRes.data
-        } else if (staffRes.staff && Array.isArray(staffRes.staff)) {
-          staffData = staffRes.staff
-        } else if (typeof staffRes === 'object') {
-          // If it's an object, check for any array properties
-          const arrayProps = Object.values(staffRes).filter(Array.isArray)
-          if (arrayProps.length > 0) {
-            staffData = arrayProps[0] // Use the first array found
+      // Helper function to extract data
+      const extractData = (response, dataType) => {
+        console.log(`🔍 Extracting ${dataType} from:`, response)
+        
+        if (Array.isArray(response)) {
+          console.log(`✅ ${dataType}: Direct array, length:`, response.length)
+          return response
+        }
+        
+        if (response && response.success && response.data) {
+          const { data } = response
+          
+          if (Array.isArray(data)) {
+            console.log(`✅ ${dataType}: response.data array, length:`, data.length)
+            return data
+          }
+          
+          if (data && typeof data === 'object') {
+            // Try plural key first
+            const pluralKey = dataType.toLowerCase() + 's'
+            if (Array.isArray(data[pluralKey])) {
+              console.log(`✅ ${dataType}: Found in data.${pluralKey}, length:`, data[pluralKey].length)
+              return data[pluralKey]
+            }
+            
+            // Try singular key
+            if (Array.isArray(data[dataType.toLowerCase()])) {
+              console.log(`✅ ${dataType}: Found in data.${dataType.toLowerCase()}, length:`, data[dataType.toLowerCase()].length)
+              return data[dataType.toLowerCase()]
+            }
+            
+            // Try to extract any array from the data object
+            for (const key in data) {
+              if (Array.isArray(data[key])) {
+                console.log(`✅ ${dataType}: Found array in data.${key}, length:`, data[key].length)
+                return data[key]
+              }
+            }
           }
         }
-      }
-      setStaff(staffData || [])
-      
-      // Handle departments response
-      let departmentsData = []
-      if (deptRes) {
-        if (Array.isArray(deptRes)) {
-          departmentsData = deptRes
-        } else if (deptRes.data && Array.isArray(deptRes.data)) {
-          departmentsData = deptRes.data
-        } else if (deptRes.departments && Array.isArray(deptRes.departments)) {
-          departmentsData = deptRes.departments
+        
+        // Response has direct property with array
+        const pluralKey = dataType.toLowerCase() + 's'
+        if (response && Array.isArray(response[pluralKey])) {
+          console.log(`✅ ${dataType}: Direct property response.${pluralKey}, length:`, response[pluralKey].length)
+          return response[pluralKey]
         }
+        
+        console.warn(`⚠️ ${dataType}: Could not extract data, returning empty array`)
+        return []
       }
-      setDepartments(departmentsData || [])
+
+      // Extract data from each response
+      const staffData = extractData(staffRes, 'staff')
+      const departmentsData = extractData(deptRes, 'department')
+      const usersData = extractData(usersRes, 'user')
+      const coursesData = extractData(coursesRes, 'course')
+      
+      console.log('✅ FINAL Staff Data:', staffData)
+      console.log('✅ FINAL Departments Data:', departmentsData)
+      console.log('✅ FINAL Users Data:', usersData)
+      console.log('✅ FINAL Courses Data:', coursesData)
+      
+      setStaff(staffData)
+      setDepartments(departmentsData)
+      setUsers(usersData)
+      setCourses(coursesData)
       
     } catch (error) {
       console.error('❌ Error fetching data:', error)
       showToast.error('Failed to load data', error.data?.message || error.message)
       setStaff([])
       setDepartments([])
+      setUsers([])
+      setCourses([])
     } finally {
       setLoading(false)
     }
@@ -110,42 +163,79 @@ const Staff = () => {
       const staffEmail = staffMember.user?.email?.toLowerCase() || ''
       const staffPosition = staffMember.position?.toLowerCase() || ''
       const staffEmployeeId = staffMember.employeeId?.toLowerCase() || ''
+      const departmentName = staffMember.department?.name?.toLowerCase() || ''
       
       return (
         staffName.includes(searchLower) ||
         staffEmail.includes(searchLower) ||
         staffPosition.includes(searchLower) ||
-        staffEmployeeId.includes(searchLower)
+        staffEmployeeId.includes(searchLower) ||
+        departmentName.includes(searchLower)
       )
     })
   }, [staff, searchTerm])
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const addQualification = () => {
+    if (qualificationInput.trim() && !formData.qualifications.includes(qualificationInput.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        qualifications: [...prev.qualifications, qualificationInput.trim()]
+      }))
+      setQualificationInput('')
+    }
+  }
+
+  const removeQualification = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      qualifications: prev.qualifications.filter((_, i) => i !== index)
+    }))
+  }
+
+  const handleSubjectsChange = (e) => {
+    const options = e.target.options
+    const selectedValues = []
+    for (let i = 0; i < options.length; i++) {
+      if (options[i].selected) {
+        selectedValues.push(options[i].value)
+      }
+    }
+    setFormData(prev => ({ ...prev, subjects: selectedValues }))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSubmitting(true)
     
     try {
+      // Prepare data matching backend schema
       const staffData = {
+        user: formData.user,
         employeeId: formData.employeeId.trim(),
         position: formData.position,
-        department: formData.department,
+        department: formData.department || undefined,
         hireDate: formData.hireDate,
-        salary: formData.salary ? parseFloat(formData.salary) : 0
+        salary: formData.salary ? parseFloat(formData.salary) : undefined,
+        qualifications: formData.qualifications,
+        subjects: formData.subjects
       }
 
-      console.log('💾 Saving staff:', editingStaff ? 'update' : 'create')
+      console.log('💾 Saving staff:', editingStaff ? 'UPDATE' : 'CREATE', staffData)
 
       if (editingStaff) {
         await adminApi.updateStaff(editingStaff._id, staffData)
         showToast.success('Staff updated successfully')
       } else {
-        showToast.info('Note: Staff creation requires a user account first')
-        // In production, you'd create a user first then staff
-        setIsModalOpen(false)
-        setEditingStaff(null)
+        await adminApi.createStaff(staffData)
+        showToast.success('Staff created successfully')
       }
       
-      await fetchData()
+      await fetchAllData()
       resetForm()
       setIsModalOpen(false)
     } catch (error) {
@@ -156,13 +246,31 @@ const Staff = () => {
     }
   }
 
+  const handleEdit = (staffMember) => {
+    console.log('✏️ Editing staff:', staffMember._id)
+    setEditingStaff(staffMember)
+    
+    setFormData({
+      user: staffMember.user?._id || staffMember.user || '',
+      employeeId: staffMember.employeeId || '',
+      position: staffMember.position || '',
+      department: staffMember.department?._id || staffMember.department || '',
+      hireDate: staffMember.hireDate ? new Date(staffMember.hireDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      salary: staffMember.salary?.toString() || '',
+      qualifications: staffMember.qualifications || [],
+      subjects: staffMember.subjects ? staffMember.subjects.map(s => s._id || s) : []
+    })
+    
+    setIsModalOpen(true)
+  }
+
   const handleDelete = async (staffId) => {
     if (window.confirm('Are you sure you want to delete this staff member?')) {
       try {
         console.log('🗑️ Deleting staff:', staffId)
         await adminApi.deleteStaff(staffId)
         showToast.success('Staff deleted successfully')
-        fetchData()
+        fetchAllData()
       } catch (error) {
         console.error('❌ Error deleting staff:', error)
         showToast.error('Failed to delete staff', error.data?.message || error.message)
@@ -172,42 +280,76 @@ const Staff = () => {
 
   const resetForm = () => {
     setFormData({
+      user: '',
       employeeId: '',
       position: '',
       department: '',
-      hireDate: '',
-      salary: ''
+      hireDate: new Date().toISOString().split('T')[0],
+      salary: '',
+      qualifications: [],
+      subjects: []
     })
+    setQualificationInput('')
     setEditingStaff(null)
   }
 
   const openCreateModal = () => {
-    console.log('➕ Opening create modal')
+    console.log('➕ Opening create staff modal')
     resetForm()
     setIsModalOpen(true)
+  }
+
+  const getPositionColor = (position) => {
+    if (!position) return 'default'
+    
+    const posLower = position.toLowerCase()
+    if (posLower.includes('teacher') || posLower.includes('lecturer')) return 'success'
+    if (posLower.includes('admin') || posLower.includes('principal') || posLower.includes('head')) return 'warning'
+    if (posLower.includes('driver') || posLower.includes('cleaner') || posLower.includes('security') || posLower.includes('custodian')) return 'info'
+    return 'default'
+  }
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A'
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
+
+  const formatCurrency = (amount) => {
+    if (!amount) return 'N/A'
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'KES'
+    }).format(amount)
   }
 
   // Calculate stats safely
   const totalStaff = staff.length || 0
   const teachersCount = Array.isArray(staff) 
-    ? staff.filter(s => s.position?.toLowerCase().includes('teacher')).length
+    ? staff.filter(s => {
+        const pos = s.position?.toLowerCase()
+        return pos && (pos.includes('teacher') || pos.includes('lecturer') || pos.includes('tutor'))
+      }).length
     : 0
   const adminCount = Array.isArray(staff)
-    ? staff.filter(s => 
-        s.position?.toLowerCase().includes('admin') || 
-        s.position?.toLowerCase().includes('secretary') ||
-        s.position?.toLowerCase().includes('accountant')
-      ).length
+    ? staff.filter(s => {
+        const pos = s.position?.toLowerCase()
+        return pos && (pos.includes('admin') || pos.includes('principal') || pos.includes('head') || 
+                      pos.includes('secretary') || pos.includes('accountant') || pos.includes('manager'))
+      }).length
     : 0
   const supportCount = Array.isArray(staff)
-    ? staff.filter(s => 
-        s.position?.toLowerCase().includes('driver') || 
-        s.position?.toLowerCase().includes('cleaner') ||
-        s.position?.toLowerCase().includes('security')
-      ).length
+    ? staff.filter(s => {
+        const pos = s.position?.toLowerCase()
+        return pos && (pos.includes('driver') || pos.includes('cleaner') || 
+                      pos.includes('security') || pos.includes('custodian') || 
+                      pos.includes('cook') || pos.includes('nurse'))
+      }).length
     : 0
 
-  // Display staff - filtered if search is active
   const displayStaff = filteredStaff
 
   return (
@@ -231,7 +373,7 @@ const Staff = () => {
         <div className="flex gap-2">
           <Button
             variant="secondary"
-            onClick={fetchData}
+            onClick={fetchAllData}
             className="flex items-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
@@ -263,7 +405,7 @@ const Staff = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4 hover:shadow-md transition-shadow">
+        <Card className="p-4">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-3">
               <Briefcase className="h-6 w-6 text-white" />
@@ -274,18 +416,18 @@ const Staff = () => {
             </div>
           </div>
         </Card>
-        <Card className="p-4 hover:shadow-md transition-shadow">
+        <Card className="p-4">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-3">
               <User className="h-6 w-6 text-white" />
             </div>
             <div className="ml-4">
-              <p className="text-sm text-gray-600">Teachers</p>
+              <p className="text-sm text-gray-600">Teaching Staff</p>
               <p className="text-2xl font-bold">{teachersCount}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4 hover:shadow-md transition-shadow">
+        <Card className="p-4">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg p-3">
               <Briefcase className="h-6 w-6 text-white" />
@@ -296,7 +438,7 @@ const Staff = () => {
             </div>
           </div>
         </Card>
-        <Card className="p-4 hover:shadow-md transition-shadow">
+        <Card className="p-4">
           <div className="flex items-center">
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-3">
               <User className="h-6 w-6 text-white" />
@@ -365,206 +507,295 @@ const Staff = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {displayStaff.map((staffMember) => {
-              const departmentName = staffMember.department?.name || 'No department'
-              const formattedHireDate = staffMember.hireDate 
-                ? new Date(staffMember.hireDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  })
-                : 'Not specified'
-              
-              return (
-                <div key={staffMember._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          <User className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900 truncate">
-                            {staffMember.user?.firstName || 'Unknown'} {staffMember.user?.lastName || ''}
-                          </h3>
-                          <p className="text-sm text-gray-600 truncate">ID: {staffMember.employeeId || 'No ID'}</p>
-                        </div>
+            {displayStaff.map((staffMember) => (
+              <div key={staffMember._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <User className="w-5 h-5 text-blue-600" />
                       </div>
-                    </div>
-                    <div className="flex space-x-1 flex-shrink-0 ml-2">
-                      <button 
-                        onClick={() => {
-                          setEditingStaff(staffMember)
-                          setFormData({
-                            employeeId: staffMember.employeeId || '',
-                            position: staffMember.position || '',
-                            department: staffMember.department?._id || '',
-                            hireDate: staffMember.hireDate ? new Date(staffMember.hireDate).toISOString().split('T')[0] : '',
-                            salary: staffMember.salary?.toString() || ''
-                          })
-                          setIsModalOpen(true)
-                        }} 
-                        className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
-                        title="Edit"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(staffMember._id)} 
-                        className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div>
+                        <h3 className="font-semibold text-gray-900 truncate">
+                          {staffMember.user?.firstName || 'Unknown'} {staffMember.user?.lastName || ''}
+                        </h3>
+                        <p className="text-sm text-gray-600 truncate">ID: {staffMember.employeeId || 'No ID'}</p>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">Position:</span>
-                      <Badge 
-                        variant={
-                          staffMember.position?.toLowerCase().includes('teacher') ? 'success' :
-                          staffMember.position?.toLowerCase().includes('admin') ? 'warning' :
-                          staffMember.position?.toLowerCase().includes('driver') || 
-                          staffMember.position?.toLowerCase().includes('cleaner') || 
-                          staffMember.position?.toLowerCase().includes('security') ? 'info' : 'default'
-                        }
-                      >
-                        {staffMember.position || 'Not specified'}
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="w-4 h-4 text-gray-400" />
-                      <span><strong>Department:</strong> {departmentName}</span>
-                    </div>
-                    
-                    {staffMember.user?.email && (
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-4 h-4 text-gray-400" />
-                        <span className="truncate">{staffMember.user.email}</span>
-                      </div>
-                    )}
-                    
-                    {staffMember.user?.profile?.phone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        <span>{staffMember.user.profile.phone}</span>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-2">
-                      <span><strong>Hire Date:</strong> {formattedHireDate}</span>
-                    </div>
-                    
-                    {staffMember.salary && (
-                      <div className="flex items-center gap-2">
-                        <span><strong>Salary:</strong> KES {parseFloat(staffMember.salary).toLocaleString()}/month</span>
-                      </div>
-                    )}
+                  <div className="flex space-x-1 flex-shrink-0 ml-2">
+                    <button 
+                      onClick={() => handleEdit(staffMember)} 
+                      className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                      title="Edit"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(staffMember._id)} 
+                      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Position:</span>
+                    <Badge variant={getPositionColor(staffMember.position)}>
+                      {staffMember.position || 'Not specified'}
+                    </Badge>
                   </div>
                   
-                  {staffMember.createdAt && (
-                    <div className="mt-4 pt-3 border-t text-xs text-gray-500">
-                      Added: {new Date(staffMember.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
+                  {staffMember.department && (
+                    <div className="flex items-center gap-2">
+                      <Building className="w-4 h-4 text-gray-400" />
+                      <span><strong>Department:</strong> {staffMember.department.name || 'Not specified'}</span>
+                    </div>
+                  )}
+                  
+                  {staffMember.user?.email && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-gray-400" />
+                      <span className="truncate">{staffMember.user.email}</span>
+                    </div>
+                  )}
+                  
+                  {staffMember.user?.profile?.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-gray-400" />
+                      <span>{staffMember.user.profile.phone}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span><strong>Hire Date:</strong> {formatDate(staffMember.hireDate)}</span>
+                  </div>
+                  
+                  {staffMember.salary && (
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-gray-400" />
+                      <span><strong>Salary:</strong> {formatCurrency(staffMember.salary)}</span>
+                    </div>
+                  )}
+                  
+                  {staffMember.qualifications && staffMember.qualifications.length > 0 && (
+                    <div className="flex items-start gap-2">
+                      <GraduationCap className="w-4 h-4 text-gray-400 mt-0.5" />
+                      <span className="text-xs">
+                        <strong>Qualifications:</strong> {staffMember.qualifications.slice(0, 2).join(', ')}
+                        {staffMember.qualifications.length > 2 && ` +${staffMember.qualifications.length - 2} more`}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {staffMember.subjects && staffMember.subjects.length > 0 && (
+                    <div className="flex items-start gap-2">
+                      <BookOpen className="w-4 h-4 text-gray-400 mt-0.5" />
+                      <span className="text-xs">
+                        <strong>Subjects:</strong> {staffMember.subjects.slice(0, 2).map(s => s.name || s).join(', ')}
+                        {staffMember.subjects.length > 2 && ` +${staffMember.subjects.length - 2} more`}
+                      </span>
                     </div>
                   )}
                 </div>
-              )
-            })}
+                
+                {staffMember.createdAt && (
+                  <div className="mt-4 pt-3 border-t text-xs text-gray-500">
+                    Added: {formatDate(staffMember.createdAt)}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </Card>
 
-      {/* Add/Edit Modal - FIXED with closeOnBackdropClick={false} */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
+          console.log('🟢 Staff modal onClose triggered')
           setIsModalOpen(false)
           setEditingStaff(null)
           resetForm()
         }}
-        closeOnBackdropClick={false}
         title={editingStaff ? 'Edit Staff Member' : 'Add New Staff Member'}
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Employee ID *"
-            required
-            placeholder="e.g., EMP001"
-            value={formData.employeeId}
-            onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
-          />
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Position *
-            </label>
-            <select
-              required
-              value={formData.position}
-              onChange={(e) => setFormData({...formData, position: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select position</option>
-              {STAFF_POSITIONS.map(pos => (
-                <option key={pos} value={pos}>{pos}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Department
-            </label>
-            <select
-              value={formData.department}
-              onChange={(e) => setFormData({...formData, department: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select department</option>
-              {departments.map(dept => (
-                <option key={dept._id} value={dept._id}>{dept.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Hire Date"
-              type="date"
-              value={formData.hireDate}
-              onChange={(e) => setFormData({...formData, hireDate: e.target.value})}
-            />
-            <Input
-              label="Salary"
-              type="number"
-              placeholder="Monthly salary"
-              value={formData.salary}
-              onChange={(e) => setFormData({...formData, salary: e.target.value})}
-            />
-          </div>
-
+          {/* User Selection (only for new staff) */}
           {!editingStaff && (
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <p className="text-sm text-blue-700">
-                <strong>Note:</strong> Staff members require a user account first. 
-                Please create the user account in the Users section before adding staff details.
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Select User Account *
+              </label>
+              <select
+                name="user"
+                value={formData.user}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select user account...</option>
+                {Array.isArray(users) && users.map(user => (
+                  <option key={user._id} value={user._id}>
+                    {user.profile?.firstName || ''} {user.profile?.lastName || ''} 
+                    {user.email && ` (${user.email})`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                User must have "staff" role. Create user in Users section first.
               </p>
             </div>
           )}
 
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Employee ID *"
+              name="employeeId"
+              required
+              placeholder="e.g., EMP001"
+              value={formData.employeeId}
+              onChange={handleInputChange}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Position *
+              </label>
+              <select
+                name="position"
+                required
+                value={formData.position}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select position</option>
+                {STAFF_POSITIONS && STAFF_POSITIONS.map(pos => (
+                  <option key={pos} value={pos}>{pos}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Department
+              </label>
+              <select
+                name="department"
+                value={formData.department}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select department</option>
+                {Array.isArray(departments) && departments.map(dept => (
+                  <option key={dept._id} value={dept._id}>{dept.name}</option>
+                ))}
+              </select>
+            </div>
+            <Input
+              label="Hire Date"
+              name="hireDate"
+              type="date"
+              value={formData.hireDate}
+              onChange={handleInputChange}
+            />
+          </div>
+
+          <Input
+            label="Salary (KES)"
+            name="salary"
+            type="number"
+            placeholder="Monthly salary"
+            value={formData.salary}
+            onChange={handleInputChange}
+          />
+
+          {/* Qualifications */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-900">Qualifications</h3>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add qualification (e.g., BSc Computer Science)"
+                  className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={qualificationInput}
+                  onChange={(e) => setQualificationInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addQualification())}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={addQualification}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            
+            {formData.qualifications.length === 0 ? (
+              <p className="text-sm text-gray-500 italic">No qualifications added</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {formData.qualifications.map((qual, index) => (
+                  <Badge key={index} variant="info" className="flex items-center gap-1">
+                    {qual}
+                    <button
+                      type="button"
+                      onClick={() => removeQualification(index)}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Subjects (for teachers) */}
+          {(formData.position?.toLowerCase().includes('teacher') || 
+            formData.position?.toLowerCase().includes('lecturer') ||
+            editingStaff?.position?.toLowerCase().includes('teacher') ||
+            editingStaff?.position?.toLowerCase().includes('lecturer')) && (
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Assigned Subjects
+              </label>
+              <select
+                multiple
+                value={formData.subjects}
+                onChange={handleSubjectsChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 h-32"
+              >
+                {Array.isArray(courses) && courses.map(course => (
+                  <option key={course._id} value={course._id}>
+                    {course.name}
+                    {course.code && ` (${course.code})`}
+                    {course.grade && ` - Grade ${course.grade}`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Hold Ctrl/Cmd to select multiple subjects
+              </p>
+            </div>
+          )}
+
+          <div className="pt-4 flex justify-end gap-3 border-t">
             <Button
               variant="secondary"
               type="button"
               onClick={() => {
+                console.log('🔘 Cancel button clicked')
                 setIsModalOpen(false)
                 setEditingStaff(null)
                 resetForm()

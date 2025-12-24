@@ -2,9 +2,12 @@ import { useState, useEffect, useMemo } from 'react'
 import { Search, Plus, User, Mail, Shield, CheckCircle, XCircle, Edit, Trash2, RefreshCw, Key, AlertCircle } from 'lucide-react'
 import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
 import { adminApi } from '../services/adminApi'
+import { useNavigate } from 'react-router-dom'
 
 const Users = () => {
+  const navigate = useNavigate()
   const [users, setUsers] = useState([])
+  const [departments, setDepartments] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -19,54 +22,120 @@ const Users = () => {
   })
   const [formData, setFormData] = useState({
     email: '',
-    password: '',  // Required for new users
-    confirmPassword: '',  // Required for new users
+    password: '',
+    confirmPassword: '',
     role: 'parent',
     profile: {
       firstName: '',
       lastName: '',
       phone: ''
-    }
+    },
+    position: '',
+    department: ''
   })
 
-  // Debug: Track modal state changes
+  // Check token on mount
   useEffect(() => {
-    console.log('🔄 Users Modal: isModalOpen changed to:', isModalOpen);
-  }, [isModalOpen]);
+    const token = localStorage.getItem('token')
+    if (!token) {
+      showToast.error('Session expired. Please login again.')
+      navigate('/login')
+      return
+    }
+  }, [navigate])
+
+  useEffect(() => {
+    console.log('🔄 Users Modal: isModalOpen changed to:', isModalOpen)
+  }, [isModalOpen])
 
   useEffect(() => {
     fetchUsers()
+    fetchDepartments()
   }, [])
+
+  const normalizeArray = (res) => {
+    if (!res) return []
+    
+    if (Array.isArray(res)) return res
+    
+    if (res.data) {
+      if (Array.isArray(res.data.users)) return res.data.users
+      if (Array.isArray(res.data.departments)) return res.data.departments
+      if (Array.isArray(res.data)) return res.data
+    }
+    
+    return []
+  }
 
   const fetchUsers = async () => {
     setLoading(true)
     try {
+      // Check token before making request
+      const token = localStorage.getItem('token')
+      if (!token) {
+        showToast.error('Session expired. Please login again.')
+        navigate('/login')
+        return
+      }
+
       const response = await adminApi.getUsers()
       console.log('📦 Users API Response:', response)
       
-      // Handle different response structures
-      let usersData = []
-      if (Array.isArray(response)) {
-        usersData = response
-      } else if (response && Array.isArray(response.data)) {
-        usersData = response.data
-      } else if (response && response.data && response.data.users) {
-        usersData = response.data.users
-      } else if (response && response.data) {
-        // Check if data is an object with users array
-        if (Array.isArray(response.data)) {
-          usersData = response.data
-        }
-      }
-      
+      const usersData = normalizeArray(response)
       console.log('✅ Normalized Users:', usersData)
       setUsers(usersData || [])
     } catch (error) {
       console.error('❌ Error fetching users:', error)
+      
+      // Handle token expiration
+      if (error.status === 401) {
+        showToast.error('Session expired. Please login again.')
+        localStorage.removeItem('token')
+        navigate('/login')
+        return
+      }
+      
       showToast.error('Failed to load users', error.data?.message || error.message)
       setUsers([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchDepartments = async () => {
+    try {
+      // Check token before making request
+      const token = localStorage.getItem('token')
+      if (!token) {
+        return
+      }
+
+      const response = await adminApi.getDepartments()
+      console.log('🏢 Departments API Response:', response)
+      
+      let departmentsData = []
+      if (Array.isArray(response)) {
+        departmentsData = response
+      } else if (response && response.data) {
+        if (Array.isArray(response.data.departments)) {
+          departmentsData = response.data.departments
+        } else if (Array.isArray(response.data)) {
+          departmentsData = response.data
+        }
+      }
+      
+      console.log('✅ Normalized Departments:', departmentsData)
+      setDepartments(departmentsData || [])
+    } catch (error) {
+      console.error('❌ Error fetching departments:', error)
+      
+      // Handle token expiration
+      if (error.status === 401) {
+        return // Don't redirect twice
+      }
+      
+      showToast.error('Failed to load departments', error.data?.message || error.message)
+      setDepartments([])
     }
   }
 
@@ -75,7 +144,14 @@ const Users = () => {
     setSubmitting(true)
     
     try {
-      // Validate password for new users
+      // Check token before making request
+      const token = localStorage.getItem('token')
+      if (!token) {
+        showToast.error('Session expired. Please login again.')
+        navigate('/login')
+        return
+      }
+
       if (!editingUser) {
         if (!formData.password) {
           showToast.error('Password is required for new users')
@@ -94,7 +170,6 @@ const Users = () => {
         }
       }
 
-      // Prepare user data according to backend schema
       const userData = {
         email: formData.email.trim().toLowerCase(),
         role: formData.role,
@@ -105,10 +180,22 @@ const Users = () => {
         }
       }
 
-      // For new users, include password
       if (!editingUser) {
         userData.password = formData.password
         userData.confirmPassword = formData.confirmPassword
+      }
+
+      if (['staff', 'teacher', 'admin', 'super_admin'].includes(formData.role)) {
+        if (!formData.position || formData.position.trim() === '') {
+          showToast.error('Position is required for this role')
+          setSubmitting(false)
+          return
+        }
+        userData.position = formData.position.trim()
+        
+        if (formData.department && formData.department.trim() !== '') {
+          userData.department = formData.department
+        }
       }
 
       console.log('💾 Saving user:', editingUser ? 'UPDATE' : 'CREATE', userData)
@@ -127,6 +214,15 @@ const Users = () => {
       fetchUsers()
     } catch (error) {
       console.error('❌ Error saving user:', error)
+      
+      // Handle token expiration
+      if (error.status === 401) {
+        showToast.error('Session expired. Please login again.')
+        localStorage.removeItem('token')
+        navigate('/login')
+        return
+      }
+      
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -135,6 +231,15 @@ const Users = () => {
 
   const handlePasswordChange = async (e) => {
     e.preventDefault()
+    
+    // Check token before making request
+    const token = localStorage.getItem('token')
+    if (!token) {
+      showToast.error('Session expired. Please login again.')
+      navigate('/login')
+      return
+    }
+    
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       showToast.error('Passwords do not match')
       return
@@ -147,19 +252,26 @@ const Users = () => {
     
     setSubmitting(true)
     try {
-      // Create password reset payload
       const passwordResetData = {
         password: passwordData.newPassword,
         confirmPassword: passwordData.confirmPassword
       }
       
-      // Use updateUser endpoint for password reset
       await adminApi.updateUser(editingUser._id, passwordResetData)
       showToast.success('Password reset successfully')
       setIsPasswordModalOpen(false)
       setPasswordData({ newPassword: '', confirmPassword: '' })
     } catch (error) {
       console.error('❌ Error resetting password:', error)
+      
+      // Handle token expiration
+      if (error.status === 401) {
+        showToast.error('Session expired. Please login again.')
+        localStorage.removeItem('token')
+        navigate('/login')
+        return
+      }
+      
       showToast.error('Failed to reset password', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -167,6 +279,14 @@ const Users = () => {
   }
 
   const handleDelete = async (userId) => {
+    // Check token before making request
+    const token = localStorage.getItem('token')
+    if (!token) {
+      showToast.error('Session expired. Please login again.')
+      navigate('/login')
+      return
+    }
+    
     if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       try {
         console.log('🗑️ Deleting user:', userId)
@@ -175,12 +295,29 @@ const Users = () => {
         fetchUsers()
       } catch (error) {
         console.error('❌ Error deleting user:', error)
+        
+        // Handle token expiration
+        if (error.status === 401) {
+          showToast.error('Session expired. Please login again.')
+          localStorage.removeItem('token')
+          navigate('/login')
+          return
+        }
+        
         showToast.error('Failed to delete user', error.data?.message || error.message)
       }
     }
   }
 
   const toggleUserStatus = async (user) => {
+    // Check token before making request
+    const token = localStorage.getItem('token')
+    if (!token) {
+      showToast.error('Session expired. Please login again.')
+      navigate('/login')
+      return
+    }
+    
     try {
       const newStatus = !user.isActive
       console.log('🔄 Toggling user status:', user._id, 'to', newStatus)
@@ -189,6 +326,15 @@ const Users = () => {
       fetchUsers()
     } catch (error) {
       console.error('❌ Error updating user status:', error)
+      
+      // Handle token expiration
+      if (error.status === 401) {
+        showToast.error('Session expired. Please login again.')
+        localStorage.removeItem('token')
+        navigate('/login')
+        return
+      }
+      
       showToast.error('Failed to update user status', error.data?.message || error.message)
     }
   }
@@ -203,11 +349,21 @@ const Users = () => {
         firstName: '',
         lastName: '',
         phone: ''
-      }
+      },
+      position: '',
+      department: ''
     })
   }
 
   const openCreateModal = () => {
+    // Check token before action
+    const token = localStorage.getItem('token')
+    if (!token) {
+      showToast.error('Session expired. Please login again.')
+      navigate('/login')
+      return
+    }
+    
     console.log('➕ Opening create user modal')
     setEditingUser(null)
     resetForm()
@@ -215,19 +371,29 @@ const Users = () => {
   }
 
   const openEditModal = (user) => {
+    // Check token before action
+    const token = localStorage.getItem('token')
+    if (!token) {
+      showToast.error('Session expired. Please login again.')
+      navigate('/login')
+      return
+    }
+    
     console.log('✏️ Opening edit modal for:', user)
     setEditingUser(user)
     
     setFormData({
       email: user.email || '',
-      password: '',  // Don't show password when editing
-      confirmPassword: '',  // Don't show confirm password when editing
+      password: '',
+      confirmPassword: '',
       role: user.role || 'parent',
       profile: {
         firstName: user.profile?.firstName || '',
         lastName: user.profile?.lastName || '',
         phone: user.profile?.phone || ''
-      }
+      },
+      position: user.position || '',
+      department: user.department?._id || user.department || ''
     })
     
     setIsModalOpen(true)
@@ -248,6 +414,12 @@ const Users = () => {
     return role.split('_').map(word => 
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ')
+  }
+
+  const getDepartmentName = (departmentId) => {
+    if (!departmentId) return 'N/A'
+    const dept = departments.find(d => d._id === departmentId)
+    return dept?.name || 'Unknown Department'
   }
 
   const columns = [
@@ -275,6 +447,30 @@ const Users = () => {
         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getRoleColor(role)}`}>
           {getRoleLabel(role)}
         </span>
+      )
+    },
+    {
+      key: 'position',
+      title: 'Position',
+      render: (position, user) => (
+        <div className="text-gray-900">
+          {['staff', 'teacher', 'admin', 'super_admin'].includes(user.role) 
+            ? (position || 'N/A') 
+            : '-'
+          }
+        </div>
+      )
+    },
+    {
+      key: 'department',
+      title: 'Department',
+      render: (departmentId, user) => (
+        <div className="text-gray-900">
+          {['staff', 'teacher', 'admin', 'super_admin'].includes(user.role) 
+            ? getDepartmentName(departmentId)
+            : '-'
+          }
+        </div>
       )
     },
     {
@@ -326,6 +522,12 @@ const Users = () => {
           </button>
           <button
             onClick={() => {
+              const token = localStorage.getItem('token')
+              if (!token) {
+                showToast.error('Session expired. Please login again.')
+                navigate('/login')
+                return
+              }
               setEditingUser(user)
               setIsPasswordModalOpen(true)
             }}
@@ -357,7 +559,6 @@ const Users = () => {
     }
   ]
 
-  // Use useMemo for filteredUsers to prevent re-renders
   const filteredUsers = useMemo(() => {
     console.log('🔍 Filtering users:', users.length)
     if (!Array.isArray(users)) return []
@@ -372,7 +573,9 @@ const Users = () => {
       const matchesSearch = searchTerm ? (
         fullName.includes(searchLower) ||
         user.email?.toLowerCase().includes(searchLower) ||
-        user.profile?.phone?.toLowerCase().includes(searchLower)
+        user.profile?.phone?.toLowerCase().includes(searchLower) ||
+        (user.position && user.position.toLowerCase().includes(searchLower)) ||
+        (getDepartmentName(user.department).toLowerCase().includes(searchLower))
       ) : true
       
       const matchesRole = roleFilter === 'all' || user.role === roleFilter
@@ -382,13 +585,28 @@ const Users = () => {
       
       return matchesSearch && matchesRole && matchesStatus
     })
-  }, [users, searchTerm, roleFilter, statusFilter])
+  }, [users, searchTerm, roleFilter, statusFilter, departments])
 
-  // Calculate stats safely
   const activeUsers = Array.isArray(users) ? users.filter(u => u.isActive).length : 0
   const adminCount = Array.isArray(users) ? users.filter(u => u.role === 'admin' || u.role === 'super_admin').length : 0
   const parentCount = Array.isArray(users) ? users.filter(u => u.role === 'parent').length : 0
   const teacherCount = Array.isArray(users) ? users.filter(u => u.role === 'teacher').length : 0
+
+  // Check if token exists on render
+  if (!localStorage.getItem('token')) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Session Expired</h2>
+          <p className="text-gray-600 mb-6">Your session has expired. Please login again to continue.</p>
+          <Button onClick={() => navigate('/login')}>
+            Go to Login
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -400,7 +618,16 @@ const Users = () => {
         <div className="flex gap-2">
           <Button
             variant="secondary"
-            onClick={fetchUsers}
+            onClick={() => {
+              const token = localStorage.getItem('token')
+              if (!token) {
+                showToast.error('Session expired. Please login again.')
+                navigate('/login')
+                return
+              }
+              fetchUsers()
+              fetchDepartments()
+            }}
             className="flex items-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
@@ -416,7 +643,6 @@ const Users = () => {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center">
@@ -464,7 +690,6 @@ const Users = () => {
         </Card>
       </div>
 
-      {/* Filters */}
       <Card>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
@@ -479,7 +704,6 @@ const Users = () => {
               />
             </div>
           </div>
-          {/* FIXED: Select component - use value prop only (not defaultValue) */}
           <Select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -515,7 +739,6 @@ const Users = () => {
         </div>
       </Card>
 
-      {/* Users Table */}
       <Card>
         {loading ? (
           <div className="py-12 text-center">
@@ -563,7 +786,6 @@ const Users = () => {
         )}
       </Card>
 
-      {/* Add/Edit User Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
@@ -615,7 +837,6 @@ const Users = () => {
                 profile: { ...formData.profile, phone: e.target.value }
               })}
             />
-            {/* FIXED: Select component with only value prop */}
             <Select
               label="Role"
               required
@@ -623,14 +844,53 @@ const Users = () => {
                 { value: 'parent', label: 'Parent' },
                 { value: 'teacher', label: 'Teacher' },
                 { value: 'staff', label: 'Staff' },
-                { value: 'admin', label: 'Admin' }
+                { value: 'admin', label: 'Admin' },
+                { value: 'super_admin', label: 'Super Admin' }
               ]}
               value={formData.role}
               onChange={(e) => setFormData({...formData, role: e.target.value})}
             />
           </div>
 
-          {/* Password fields for new users only */}
+          {['staff', 'teacher', 'admin', 'super_admin'].includes(formData.role) && (
+            <div className="space-y-4">
+              <Input
+                label="Position"
+                required
+                value={formData.position}
+                onChange={(e) => setFormData({...formData, position: e.target.value})}
+                placeholder="e.g., Teacher, Accountant, Principal"
+                helperText="Required for this role"
+              />
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Department (Optional)
+                </label>
+                <select
+                  value={formData.department}
+                  onChange={(e) => setFormData({...formData, department: e.target.value})}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a department (optional)</option>
+                  {Array.isArray(departments) && departments.map(dept => (
+                    <option key={dept._id} value={dept._id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+                {departments.length === 0 && (
+                  <p className="mt-1 text-xs text-red-500">
+                    No departments found. Create departments first in the Departments section.
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  Leave empty if department doesn't apply
+                </p>
+              </div>
+            </div>
+          )}
+
           {!editingUser && (
             <div className="space-y-4">
               <div className="border-t pt-4">
@@ -668,7 +928,6 @@ const Users = () => {
             </div>
           )}
 
-          {/* Info for editing users */}
           {editingUser && (
             <div className="bg-yellow-50 p-3 rounded-lg">
               <div className="flex gap-2">
@@ -705,7 +964,6 @@ const Users = () => {
         </form>
       </Modal>
 
-      {/* Password Reset Modal */}
       <Modal
         isOpen={isPasswordModalOpen}
         onClose={() => {

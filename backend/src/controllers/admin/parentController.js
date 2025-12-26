@@ -1,4 +1,4 @@
-const Parent = require("../../models/Parent");
+const Parent = require('../../models/parent')
 
 const createParent = async (req, res) => {
   try {
@@ -24,17 +24,25 @@ const getParents = async (req, res) => {
     const filter = {};
     if (search) {
       filter.$or = [
-        { 'user.profile.firstName': { $regex: search, $options: 'i' } },
-        { 'user.profile.lastName': { $regex: search, $options: 'i' } },
+        { 'user.firstName': { $regex: search, $options: 'i' } },
+        { 'user.lastName': { $regex: search, $options: 'i' } },
         { 'user.email': { $regex: search, $options: 'i' } }
       ];
     }
 
     const parents = await Parent.find(filter)
-      .populate('user children')
+      .populate({
+        path: 'user',
+        select: '_id email role profile'
+      })
+      .populate({
+        path: 'children',
+        select: '_id firstName lastName studentId grade'
+      })
       .sort({ createdAt: -1 })
       .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .skip((page - 1) * limit)
+      .lean(); // ADD THIS
 
     const total = await Parent.countDocuments(filter);
 
@@ -60,7 +68,15 @@ const getParents = async (req, res) => {
 const getParent = async (req, res) => {
   try {
     const parent = await Parent.findById(req.params.id)
-      .populate('user children');
+      .populate({
+        path: 'user',
+        select: '_id email role profile'
+      })
+      .populate({
+        path: 'children',
+        select: '_id firstName lastName studentId grade'
+      })
+      .lean(); // ADD THIS
 
     if (!parent) {
       return res.status(404).json({
@@ -87,7 +103,16 @@ const updateParent = async (req, res) => {
       req.params.id,
       req.body,
       { new: true, runValidators: true }
-    ).populate('user children');
+    )
+    .populate({
+      path: 'user',
+      select: '_id email role profile'
+    })
+    .populate({
+      path: 'children',
+      select: '_id firstName lastName studentId grade'
+    })
+    .lean(); // ADD THIS
 
     if (!parent) {
       return res.status(404).json({

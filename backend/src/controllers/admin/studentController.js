@@ -33,10 +33,22 @@ const getStudents = async (req, res) => {
     }
 
     const students = await Student.find(filter)
-      .populate('parents classroom')
+      .populate({
+        path: 'parents',
+        select: '_id user',
+        populate: {
+          path: 'user',
+          select: '_id email role profile'
+        }
+      })
+      .populate({
+        path: 'classroom',
+        select: '_id name gradeLevel'
+      })
       .sort({ createdAt: -1 })
       .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .skip((page - 1) * limit)
+      .lean(); // ADD THIS
 
     const total = await Student.countDocuments(filter);
 
@@ -62,7 +74,19 @@ const getStudents = async (req, res) => {
 const getStudent = async (req, res) => {
   try {
     const student = await Student.findById(req.params.id)
-      .populate('parents classroom');
+      .populate({
+        path: 'parents',
+        select: '_id user',
+        populate: {
+          path: 'user',
+          select: '_id email role profile'
+        }
+      })
+      .populate({
+        path: 'classroom',
+        select: '_id name gradeLevel'
+      })
+      .lean(); // ADD THIS
 
     if (!student) {
       return res.status(404).json({
@@ -89,7 +113,20 @@ const updateStudent = async (req, res) => {
       req.params.id,
       req.body,
       { new: true, runValidators: true }
-    ).populate('parents classroom');
+    )
+    .populate({
+      path: 'parents',
+      select: '_id user',
+      populate: {
+        path: 'user',
+        select: '_id email role profile'
+      }
+    })
+    .populate({
+      path: 'classroom',
+      select: '_id name gradeLevel'
+    })
+    .lean(); // ADD THIS
 
     if (!student) {
       return res.status(404).json({

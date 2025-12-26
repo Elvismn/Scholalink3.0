@@ -2,111 +2,106 @@
 export const API_ENDPOINTS = {
   // Authentication
   AUTH: {
-    LOGIN: '/auth/login',
-    LOGOUT: '/auth/logout',
-    REGISTER: '/auth/register',
-    REFRESH_TOKEN: '/auth/refresh-token',
-    FORGOT_PASSWORD: '/auth/forgot-password',
-    RESET_PASSWORD: '/auth/reset-password',
-    ME: '/auth/me'
+    LOGIN: '/api/auth/login',
+    LOGOUT: '/api/auth/logout',
+    REGISTER: '/api/auth/register',
+    REFRESH_TOKEN: '/api/auth/refresh-token',
+    FORGOT_PASSWORD: '/api/auth/forgot-password',
+    RESET_PASSWORD: '/api/auth/reset-password',
+    ME: '/api/auth/me'
   },
 
   // Admin endpoints
   ADMIN: {
+    // Users
+    USERS: '/api/admin/users',
+    USER_BY_ID: (id) => `/api/admin/users/${id}`,
 
-    //Users
-    USERS: '/admin/users',
-    USER_BY_ID: (id) => `/admin/users/${id}`,
-
-    //Curriculum
-    CURRICULUM: '/admin/curriculum',
-    CURRICULUM_BY_ID: (id) => `/admin/curriculum/${id}`,
+    // Curriculum
+    CURRICULUMS: '/api/admin/curriculums',
+    CURRICULUM_BY_ID: (id) => `/api/admin/curriculums/${id}`,
 
     // Students
-    STUDENTS: '/admin/students',
-    STUDENT_BY_ID: (id) => `/admin/students/${id}`,
+    STUDENTS: '/api/admin/students',
+    STUDENT_BY_ID: (id) => `/api/admin/students/${id}`,
     
     // Parents
-    PARENTS: '/admin/parents',
-    PARENT_BY_ID: (id) => `/admin/parents/${id}`,
+    PARENTS: '/api/admin/parents',
+    PARENT_BY_ID: (id) => `/api/admin/parents/${id}`,
     
     // Staff
-    STAFF: '/admin/staff',
-    STAFF_BY_ID: (id) => `/admin/staff/${id}`,
+    STAFF: '/api/admin/staff',
+    STAFF_BY_ID: (id) => `/api/admin/staff/${id}`,
     
     // Classrooms
-    CLASSROOMS: '/admin/classrooms',
-    CLASSROOM_BY_ID: (id) => `/admin/classrooms/${id}`,
+    CLASSROOMS: '/api/admin/classrooms',
+    CLASSROOM_BY_ID: (id) => `/api/admin/classrooms/${id}`,
     
     // Grades
-    GRADES: '/admin/grades',
-    GRADE_BY_ID: (id) => `/admin/grades/${id}`,
+    GRADES: '/api/admin/grades',
+    GRADE_BY_ID: (id) => `/api/admin/grades/${id}`,
     
     // Courses
-    COURSES: '/admin/courses',
-    COURSE_BY_ID: (id) => `/admin/courses/${id}`,
+    COURSES: '/api/admin/courses',
+    COURSE_BY_ID: (id) => `/api/admin/courses/${id}`,
     
     // Departments
-    DEPARTMENTS: '/admin/departments',
-    DEPARTMENT_BY_ID: (id) => `/admin/departments/${id}`,
+    DEPARTMENTS: '/api/admin/departments',
+    DEPARTMENT_BY_ID: (id) => `/api/admin/departments/${id}`,
     
     // Inventory
-    INVENTORY: '/admin/inventory',
-    INVENTORY_BY_ID: (id) => `/admin/inventory/${id}`,
+    INVENTORY: '/api/admin/inventory',
+    INVENTORY_BY_ID: (id) => `/api/admin/inventory/${id}`,
     
     // Clubs
-    CLUBS: '/admin/clubs',
-    CLUB_BY_ID: (id) => `/admin/clubs/${id}`,
+    CLUBS: '/api/admin/clubs',
+    CLUB_BY_ID: (id) => `/api/admin/clubs/${id}`,
     
     // Stakeholders
-    STAKEHOLDERS: '/admin/stakeholders',
-    STAKEHOLDER_BY_ID: (id) => `/admin/stakeholders/${id}`,
+    STAKEHOLDERS: '/api/admin/stakeholders',
+    STAKEHOLDER_BY_ID: (id) => `/api/admin/stakeholders/${id}`,
     
     // Vehicles
-    VEHICLES: '/admin/vehicles',
-    VEHICLE_BY_ID: (id) => `/admin/vehicles/${id}`,
-    VEHICLES_NEEDING_SERVICE: '/admin/vehicles/needing-service',
-    VEHICLE_ANALYTICS: (id) => `/admin/vehicles/${id}/analytics`,
+    VEHICLES: '/api/admin/vehicles',
+    VEHICLE_BY_ID: (id) => `/api/admin/vehicles/${id}`,
+    VEHICLES_NEEDING_SERVICE: '/api/admin/vehicles/needing-service',
+    VEHICLE_ANALYTICS: (id) => `/api/admin/vehicles/${id}/analytics`,
     
     // Fuel Records
-    FUEL_RECORDS: '/admin/fuel-records',
-    FUEL_RECORD_BY_ID: (id) => `/admin/fuel-records/${id}`,
-    UNVERIFIED_FUEL_RECORDS: '/admin/fuel-records/unverified',
-    FUEL_ANALYTICS: (vehicleId) => `/admin/fuel-records/vehicle/${vehicleId}/analytics`,
+    FUEL_RECORDS: '/api/admin/fuel-records',
+    FUEL_RECORD_BY_ID: (id) => `/api/admin/fuel-records/${id}`,
+    UNVERIFIED_FUEL_RECORDS: '/api/admin/fuel-records/unverified',
+    FUEL_ANALYTICS: (vehicleId) => `/api/admin/fuel-records/vehicle/${vehicleId}/analytics`,
     
     // Maintenance
-    MAINTENANCE: '/admin/maintenance',
-    MAINTENANCE_BY_ID: (id) => `/admin/maintenance/${id}`,
-    UPCOMING_MAINTENANCE: '/admin/maintenance/upcoming',
-    MAINTENANCE_ANALYTICS: (vehicleId) => `/admin/maintenance/vehicle/${vehicleId}/analytics`,
-    MAINTENANCE_FORECAST: (vehicleId) => `/admin/maintenance/vehicle/${vehicleId}/forecast`,
+    MAINTENANCE: '/api/admin/maintenance',
+    MAINTENANCE_BY_ID: (id) => `/api/admin/maintenance/${id}`,
+    UPCOMING_MAINTENANCE: '/api/admin/maintenance/upcoming',
+    MAINTENANCE_ANALYTICS: (vehicleId) => `/api/admin/maintenance/vehicle/${vehicleId}/analytics`,
+    MAINTENANCE_FORECAST: (vehicleId) => `/api/admin/maintenance/vehicle/${vehicleId}/forecast`,
     
     // Vehicle Documents
-    VEHICLE_DOCUMENTS: '/admin/vehicle-documents',
-    VEHICLE_DOCUMENT_BY_ID: (id) => `/admin/vehicle-documents/${id}`,
-    EXPIRING_DOCUMENTS: '/admin/vehicle-documents/expiring',
-    EXPIRED_DOCUMENTS: '/admin/vehicle-documents/expired',
-    DOCUMENT_ANALYTICS: (vehicleId) => `/admin/vehicle-documents/vehicle/${vehicleId}/analytics`,
-    BULK_UPDATE_DOCUMENTS: '/admin/vehicle-documents/bulk-update',
-    RENEW_DOCUMENT: (id) => `/admin/vehicle-documents/${id}/renew`,
-    VERIFY_DOCUMENT: (id) => `/admin/vehicle-documents/${id}/verify`
+    VEHICLE_DOCUMENTS: '/api/admin/vehicle-documents',
+    VEHICLE_DOCUMENT_BY_ID: (id) => `/api/admin/vehicle-documents/${id}`,
+    EXPIRING_DOCUMENTS: '/api/admin/vehicle-documents/expiring',
+    EXPIRED_DOCUMENTS: '/api/admin/vehicle-documents/expired',
+    DOCUMENT_ANALYTICS: (vehicleId) => `/api/admin/vehicle-documents/vehicle/${vehicleId}/analytics`,
+    BULK_UPDATE_DOCUMENTS: '/api/admin/vehicle-documents/bulk-update',
+    RENEW_DOCUMENT: (id) => `/api/admin/vehicle-documents/${id}/renew`,
+    VERIFY_DOCUMENT: (id) => `/api/admin/vehicle-documents/${id}/verify`
   },
 
   // Parent endpoints
   PARENT: {
-    PROFILE: '/parents/profile',
-    CHILDREN: '/parents/children',
-    CHILD_BY_ID: (id) => `/parents/children/${id}`,
-    CHILD_ACADEMICS: (childId) => `/parents/children/${childId}/academics`,
-    ATTENDANCE: (childId) => `/parents/children/${childId}/attendance`,
-    GRADES: (childId) => `/parents/children/${childId}/grades`,
-    NOTIFICATIONS: '/parents/notifications'
+    PROFILE: '/api/parents/profile',
+    CHILDREN: '/api/parents/children',
+    CHILD_BY_ID: (id) => `/api/parents/children/${id}`,
+    CHILD_ACADEMICS: (childId) => `/api/parents/children/${childId}/academics`,
+    ATTENDANCE: (childId) => `/api/parents/children/${childId}/attendance`,
+    GRADES: (childId) => `/api/parents/children/${childId}/grades`,
+    NOTIFICATIONS: '/api/parents/notifications'
   }
-
-  
-  
 };
-
 
 // Common HTTP status codes
 export const HTTP_STATUS = {

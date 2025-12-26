@@ -2,7 +2,7 @@ import { API_ENDPOINTS } from '@shared/utils/apiService'
 
 class AdminApi {
   constructor(baseURL) {
-    this.baseURL = baseURL || (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
+    this.baseURL = baseURL || (import.meta.env.VITE_API_URL || 'http://localhost:5000')
   }
 
   getHeaders() {
@@ -31,7 +31,12 @@ class AdminApi {
       config.body = JSON.stringify(data)
     }
 
-    const url = `${this.baseURL}${endpoint}`
+    // Build URL - remove /api from baseURL if endpoint already has it
+    let base = this.baseURL
+    if (endpoint.startsWith('/api/') && base.endsWith('/api')) {
+      base = base.replace(/\/api$/, '')
+    }
+    const url = `${base}${endpoint}`
     
     console.log(`🔧 ADMIN API: ${method} ${url}`)
 
@@ -396,7 +401,7 @@ class AdminApi {
 
   // Dashboard Stats
   async getDashboardStats() {
-    return this.request('/admin/dashboard')
+    return this.request('/api/admin/dashboard')
   }
 
   // Inventory CRUD

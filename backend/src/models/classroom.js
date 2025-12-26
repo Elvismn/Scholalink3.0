@@ -29,14 +29,13 @@ const classroomSchema = new mongoose.Schema({
   timestamps: true 
 });
 
-// Virtual for numberOfStudents
 classroomSchema.virtual('numberOfStudents').get(function() {
   return this.students.length;
 });
 
-// Auto-populate classTeacher and students
-classroomSchema.pre('find', function() {
-  this.populate('classTeacher').populate('students').populate('courses');
-});
+// REMOVE THIS AUTO-POPULATE LINE:
+// classroomSchema.pre('find', function() {
+//   this.populate('classTeacher').populate('students').populate('courses');
+// });
 
 module.exports = mongoose.model("Classroom", classroomSchema);

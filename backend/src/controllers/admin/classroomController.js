@@ -1,4 +1,4 @@
-const Classroom = require("../../models/Classroom");
+const Classroom = require("../../models/classroom");
 
 const createClassroom = async (req, res) => {
   try {
@@ -26,15 +26,32 @@ const getClassrooms = async (req, res) => {
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
-        { classTeacher: { $regex: search, $options: 'i' } }
+        { 'classTeacher.user.firstName': { $regex: search, $options: 'i' } },
+        { 'classTeacher.user.lastName': { $regex: search, $options: 'i' } }
       ];
     }
 
     const classrooms = await Classroom.find(filter)
-      .populate('classTeacher students courses')
+      .populate({
+        path: 'classTeacher',
+        select: '_id user position',
+        populate: {
+          path: 'user',
+          select: '_id firstName lastName email'
+        }
+      })
+      .populate({
+        path: 'students',
+        select: '_id firstName lastName studentId grade'
+      })
+      .populate({
+        path: 'courses',
+        select: '_id name code'
+      })
       .sort({ name: 1 })
       .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .skip((page - 1) * limit)
+      .lean(); // ADD THIS
 
     const total = await Classroom.countDocuments(filter);
 
@@ -60,7 +77,23 @@ const getClassrooms = async (req, res) => {
 const getClassroom = async (req, res) => {
   try {
     const classroom = await Classroom.findById(req.params.id)
-      .populate('classTeacher students courses');
+      .populate({
+        path: 'classTeacher',
+        select: '_id user position',
+        populate: {
+          path: 'user',
+          select: '_id firstName lastName email'
+        }
+      })
+      .populate({
+        path: 'students',
+        select: '_id firstName lastName studentId grade'
+      })
+      .populate({
+        path: 'courses',
+        select: '_id name code'
+      })
+      .lean(); // ADD THIS
 
     if (!classroom) {
       return res.status(404).json({
@@ -87,7 +120,24 @@ const updateClassroom = async (req, res) => {
       req.params.id,
       req.body,
       { new: true, runValidators: true }
-    ).populate('classTeacher students courses');
+    )
+    .populate({
+      path: 'classTeacher',
+      select: '_id user position',
+      populate: {
+        path: 'user',
+        select: '_id firstName lastName email'
+      }
+    })
+    .populate({
+      path: 'students',
+      select: '_id firstName lastName studentId grade'
+    })
+    .populate({
+      path: 'courses',
+      select: '_id name code'
+    })
+    .lean(); // ADD THIS
 
     if (!classroom) {
       return res.status(404).json({

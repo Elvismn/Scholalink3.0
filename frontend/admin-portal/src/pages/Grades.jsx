@@ -40,11 +40,12 @@ const Grades = () => {
     academicYear: new Date().getFullYear().toString(),
     term: 'Term 1',
     scores: {
-      assignments: '',
+      opener: '',
       midterm: '',
-      final: '',
-      practical: ''
-    }
+      final: ''
+    },
+    teacher: '',
+    comments: ''
   })
 
   useEffect(() => {
@@ -63,20 +64,13 @@ const Grades = () => {
       
       console.log('✅ Grades - Data received:', gradesRes)
       
-      // Handle grades response
+      // Handle grades response - FIXED: Backend returns data.grades
       let gradesData = []
-      if (gradesRes) {
-        if (Array.isArray(gradesRes)) {
-          gradesData = gradesRes
-        } else if (gradesRes.data && Array.isArray(gradesRes.data)) {
+      if (gradesRes && gradesRes.data) {
+        if (Array.isArray(gradesRes.data.grades)) {
+          gradesData = gradesRes.data.grades
+        } else if (Array.isArray(gradesRes.data)) {
           gradesData = gradesRes.data
-        } else if (gradesRes.grades && Array.isArray(gradesRes.grades)) {
-          gradesData = gradesRes.grades
-        } else if (typeof gradesRes === 'object') {
-          const arrayProps = Object.values(gradesRes).filter(Array.isArray)
-          if (arrayProps.length > 0) {
-            gradesData = arrayProps[0]
-          }
         }
       }
       setGrades(gradesData || [])
@@ -84,12 +78,10 @@ const Grades = () => {
       // Handle students response
       let studentsData = []
       if (studentsRes) {
-        if (Array.isArray(studentsRes)) {
-          studentsData = studentsRes
-        } else if (studentsRes.data && Array.isArray(studentsRes.data)) {
+        if (Array.isArray(studentsRes.data)) {
           studentsData = studentsRes.data
-        } else if (studentsRes.students && Array.isArray(studentsRes.students)) {
-          studentsData = studentsRes.students
+        } else if (Array.isArray(studentsRes)) {
+          studentsData = studentsRes
         }
       }
       setStudents(studentsData || [])
@@ -97,12 +89,10 @@ const Grades = () => {
       // Handle courses response
       let coursesData = []
       if (coursesRes) {
-        if (Array.isArray(coursesRes)) {
-          coursesData = coursesRes
-        } else if (coursesRes.data && Array.isArray(coursesRes.data)) {
+        if (Array.isArray(coursesRes.data)) {
           coursesData = coursesRes.data
-        } else if (coursesRes.courses && Array.isArray(coursesRes.courses)) {
-          coursesData = coursesRes.courses
+        } else if (Array.isArray(coursesRes)) {
+          coursesData = coursesRes
         }
       }
       setCourses(coursesData || [])
@@ -133,13 +123,11 @@ const Grades = () => {
       const studentName = `${grade.student?.firstName || ''} ${grade.student?.lastName || ''}`.toLowerCase()
       const courseName = grade.course?.name?.toLowerCase() || ''
       const courseCode = grade.course?.code?.toLowerCase() || ''
-      const studentGrade = grade.student?.grade?.toLowerCase() || ''
       
       return (
         studentName.includes(searchLower) ||
         courseName.includes(searchLower) ||
-        courseCode.includes(searchLower) ||
-        studentGrade.includes(searchLower)
+        courseCode.includes(searchLower)
       )
     })
   }, [grades, searchTerm])
@@ -149,17 +137,19 @@ const Grades = () => {
     setSubmitting(true)
     
     try {
+      // FIXED: Use correct score fields (opener, midterm, final) instead of (assignments, midterm, final, practical)
       const gradeData = {
         student: formData.student,
         course: formData.course,
         academicYear: formData.academicYear,
         term: formData.term,
         scores: {
-          assignments: parseFloat(formData.scores.assignments) || 0,
+          opener: parseFloat(formData.scores.opener) || 0,
           midterm: parseFloat(formData.scores.midterm) || 0,
-          final: parseFloat(formData.scores.final) || 0,
-          practical: parseFloat(formData.scores.practical) || 0
-        }
+          final: parseFloat(formData.scores.final) || 0
+        },
+        teacher: formData.teacher,
+        comments: formData.comments
       }
 
       console.log('💾 Grades - Saving grade:', editingGrade ? 'update' : 'create')
@@ -206,6 +196,7 @@ const Grades = () => {
       case 'C': return 'bg-yellow-100 text-yellow-800'
       case 'D': return 'bg-orange-100 text-orange-800'
       case 'F': return 'bg-red-100 text-red-800'
+      case 'Incomplete': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
@@ -217,11 +208,12 @@ const Grades = () => {
       academicYear: new Date().getFullYear().toString(),
       term: 'Term 1',
       scores: {
-        assignments: '',
+        opener: '',
         midterm: '',
-        final: '',
-        practical: ''
-      }
+        final: ''
+      },
+      teacher: '',
+      comments: ''
     })
     setEditingGrade(null)
   }
@@ -237,9 +229,11 @@ const Grades = () => {
   const averageScore = totalGrades > 0 
     ? (grades.reduce((sum, grade) => sum + (grade.totalScore || 0), 0) / totalGrades).toFixed(1)
     : '0.0'
+  
   const passRate = totalGrades > 0
-    ? ((grades.filter(g => g.grade !== 'F').length / totalGrades) * 100).toFixed(0) + '%'
+    ? ((grades.filter(g => g.grade !== 'F' && g.grade !== 'Incomplete').length / totalGrades) * 100).toFixed(0) + '%'
     : '0%'
+  
   const uniqueCourses = totalGrades > 0
     ? [...new Set(grades.map(g => g.course?._id).filter(Boolean))].length
     : 0
@@ -358,7 +352,7 @@ const Grades = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search by student name, course, or grade level..."
+                placeholder="Search by student name or course..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -466,7 +460,6 @@ const Grades = () => {
               const studentName = `${grade.student?.firstName || ''} ${grade.student?.lastName || ''}`.trim()
               const courseName = grade.course?.name || 'Unknown Course'
               const courseCode = grade.course?.code || ''
-              const studentGradeLevel = grade.student?.grade || 'Not specified'
               const totalScore = grade.totalScore || 0
               
               return (
@@ -479,7 +472,9 @@ const Grades = () => {
                         </div>
                         <div>
                           <h3 className="font-semibold text-gray-900 truncate">{studentName}</h3>
-                          <p className="text-sm text-gray-600 truncate">{studentGradeLevel}</p>
+                          <p className="text-sm text-gray-600 truncate">
+                            {grade.student?.studentId || 'No ID'}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -493,11 +488,12 @@ const Grades = () => {
                             academicYear: grade.academicYear || new Date().getFullYear().toString(),
                             term: grade.term || 'Term 1',
                             scores: {
-                              assignments: grade.scores?.assignments?.toString() || '',
+                              opener: grade.scores?.opener?.toString() || '',
                               midterm: grade.scores?.midterm?.toString() || '',
-                              final: grade.scores?.final?.toString() || '',
-                              practical: grade.scores?.practical?.toString() || ''
-                            }
+                              final: grade.scores?.final?.toString() || ''
+                            },
+                            teacher: grade.teacher?._id || '',
+                            comments: grade.comments || ''
                           })
                           setIsModalOpen(true)
                         }} 
@@ -537,18 +533,24 @@ const Grades = () => {
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <span><strong>Term:</strong> {grade.term}</span>
+                      <span><strong>Term:</strong> {grade.term} - {grade.academicYear}</span>
                     </div>
                     
                     {grade.scores && (
                       <div className="pt-2 border-t">
-                        <span className="font-medium text-gray-700">Breakdown:</span>
-                        <div className="mt-1 text-xs text-gray-500 grid grid-cols-2 gap-1">
-                          <span>Assignments: {grade.scores.assignments || 0}</span>
+                        <span className="font-medium text-gray-700">Score Breakdown:</span>
+                        <div className="mt-1 text-xs text-gray-500 grid grid-cols-3 gap-1">
+                          <span>Opener: {grade.scores.opener || 0}</span>
                           <span>Midterm: {grade.scores.midterm || 0}</span>
                           <span>Final: {grade.scores.final || 0}</span>
-                          <span>Practical: {grade.scores.practical || 0}</span>
                         </div>
+                      </div>
+                    )}
+                    
+                    {grade.comments && (
+                      <div className="pt-2 border-t">
+                        <span className="font-medium text-gray-700">Comments:</span>
+                        <p className="mt-1 text-xs text-gray-500">{grade.comments}</p>
                       </div>
                     )}
                   </div>
@@ -569,7 +571,7 @@ const Grades = () => {
         )}
       </Card>
 
-      {/* Add/Edit Modal - FIXED with closeOnBackdropClick={false} */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
@@ -596,7 +598,7 @@ const Grades = () => {
                 <option value="">Select student</option>
                 {students.map(student => (
                   <option key={student._id} value={student._id}>
-                    {student.firstName} {student.lastName} - {student.grade}
+                    {student.firstName} {student.lastName} - {student.studentId || student._id}
                   </option>
                 ))}
               </select>
@@ -655,25 +657,27 @@ const Grades = () => {
           </div>
 
           <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Scores</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Scores (0-100)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Input
-                label="Assignments (20%)"
+                label="Opener Exam"
                 type="number"
                 min="0"
                 max="100"
+                step="0.1"
                 placeholder="0-100"
-                value={formData.scores.assignments}
+                value={formData.scores.opener}
                 onChange={(e) => setFormData({
                   ...formData,
-                  scores: { ...formData.scores, assignments: e.target.value }
+                  scores: { ...formData.scores, opener: e.target.value }
                 })}
               />
               <Input
-                label="Midterm (30%)"
+                label="Midterm Exam"
                 type="number"
                 min="0"
                 max="100"
+                step="0.1"
                 placeholder="0-100"
                 value={formData.scores.midterm}
                 onChange={(e) => setFormData({
@@ -682,10 +686,11 @@ const Grades = () => {
                 })}
               />
               <Input
-                label="Final Exam (40%)"
+                label="Final Exam"
                 type="number"
                 min="0"
                 max="100"
+                step="0.1"
                 placeholder="0-100"
                 value={formData.scores.final}
                 onChange={(e) => setFormData({
@@ -693,23 +698,26 @@ const Grades = () => {
                   scores: { ...formData.scores, final: e.target.value }
                 })}
               />
-              <Input
-                label="Practical (10%)"
-                type="number"
-                min="0"
-                max="100"
-                placeholder="0-100"
-                value={formData.scores.practical}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  scores: { ...formData.scores, practical: e.target.value }
-                })}
-              />
             </div>
             <div className="mt-3 pt-3 border-t border-gray-200">
               <div className="text-sm text-gray-600">
-                <strong>Note:</strong> Total score will be calculated automatically based on weights.
+                <strong>Note:</strong> Total score and grade will be calculated automatically.
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Comments (Optional)
+              </label>
+              <textarea
+                value={formData.comments}
+                onChange={(e) => setFormData({...formData, comments: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows="3"
+                placeholder="Add any comments about this grade..."
+              />
             </div>
           </div>
 

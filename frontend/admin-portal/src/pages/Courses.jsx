@@ -38,7 +38,8 @@ const Courses = () => {
     instructor: '',
     department: '',
     credits: '1',
-    description: ''
+    description: '',
+    syllabus: []
   })
 
   useEffect(() => {
@@ -57,20 +58,13 @@ const Courses = () => {
       
       console.log('✅ Courses - Data received:', coursesRes)
       
-      // Handle courses response
+      // Handle courses response - FIXED: Backend returns data.courses
       let coursesData = []
-      if (coursesRes) {
-        if (Array.isArray(coursesRes)) {
-          coursesData = coursesRes
-        } else if (coursesRes.data && Array.isArray(coursesRes.data)) {
+      if (coursesRes && coursesRes.data) {
+        if (Array.isArray(coursesRes.data.courses)) {
+          coursesData = coursesRes.data.courses
+        } else if (Array.isArray(coursesRes.data)) {
           coursesData = coursesRes.data
-        } else if (coursesRes.courses && Array.isArray(coursesRes.courses)) {
-          coursesData = coursesRes.courses
-        } else if (typeof coursesRes === 'object') {
-          const arrayProps = Object.values(coursesRes).filter(Array.isArray)
-          if (arrayProps.length > 0) {
-            coursesData = arrayProps[0]
-          }
         }
       }
       setCourses(coursesData || [])
@@ -78,31 +72,28 @@ const Courses = () => {
       // Handle staff response
       let staffData = []
       if (staffRes) {
-        if (Array.isArray(staffRes)) {
-          staffData = staffRes
-        } else if (staffRes.data && Array.isArray(staffRes.data)) {
+        if (Array.isArray(staffRes.data)) {
           staffData = staffRes.data
-        } else if (staffRes.staff && Array.isArray(staffRes.staff)) {
-          staffData = staffRes.staff
+        } else if (Array.isArray(staffRes)) {
+          staffData = staffRes
         }
       }
       
       // Filter to get only teachers/instructors
       const teachers = staffData.filter(
         staff => staff.position?.toLowerCase().includes('teacher') || 
-                staff.position?.toLowerCase().includes('instructor')
+                staff.position?.toLowerCase().includes('instructor') ||
+                staff.position?.toLowerCase().includes('lecturer')
       )
       setInstructors(teachers)
       
       // Handle departments response
       let departmentsData = []
       if (deptRes) {
-        if (Array.isArray(deptRes)) {
-          departmentsData = deptRes
-        } else if (deptRes.data && Array.isArray(deptRes.data)) {
+        if (Array.isArray(deptRes.data)) {
           departmentsData = deptRes.data
-        } else if (deptRes.departments && Array.isArray(deptRes.departments)) {
-          departmentsData = deptRes.departments
+        } else if (Array.isArray(deptRes)) {
+          departmentsData = deptRes
         }
       }
       setDepartments(departmentsData || [])
@@ -157,7 +148,8 @@ const Courses = () => {
         instructor: formData.instructor,
         department: formData.department,
         credits: parseInt(formData.credits) || 1,
-        description: formData.description.trim()
+        description: formData.description.trim(),
+        syllabus: formData.syllabus
       }
 
       console.log('💾 Courses - Saving course:', editingCourse ? 'update' : 'create')
@@ -204,7 +196,8 @@ const Courses = () => {
       instructor: '',
       department: '',
       credits: '1',
-      description: ''
+      description: '',
+      syllabus: []
     })
     setEditingCourse(null)
   }
@@ -213,6 +206,34 @@ const Courses = () => {
     console.log('➕ Courses - Opening create modal')
     resetForm()
     setIsModalOpen(true)
+  }
+
+  // Add syllabus item
+  const addSyllabusItem = () => {
+    setFormData({
+      ...formData,
+      syllabus: [...formData.syllabus, { duration: '' }]
+    })
+  }
+
+  // Remove syllabus item
+  const removeSyllabusItem = (index) => {
+    const updatedSyllabus = formData.syllabus.filter((_, i) => i !== index)
+    setFormData({
+      ...formData,
+      syllabus: updatedSyllabus
+    })
+  }
+
+  // Update syllabus item
+  const updateSyllabusItem = (index, value) => {
+    const updatedSyllabus = formData.syllabus.map((item, i) => 
+      i === index ? { ...item, duration: value } : item
+    )
+    setFormData({
+      ...formData,
+      syllabus: updatedSyllabus
+    })
   }
 
   // Calculate stats safely
@@ -428,7 +449,8 @@ const Courses = () => {
                             instructor: course.instructor?._id || '',
                             department: course.department?._id || '',
                             credits: course.credits?.toString() || '1',
-                            description: course.description || ''
+                            description: course.description || '',
+                            syllabus: course.syllabus || []
                           })
                           setIsModalOpen(true)
                         }} 
@@ -474,9 +496,16 @@ const Courses = () => {
                       </div>
                     )}
                     
-                    {course.instructor?.position && (
-                      <div className="flex items-center gap-2">
-                        <span><strong>Instructor Role:</strong> {course.instructor.position}</span>
+                    {course.syllabus && course.syllabus.length > 0 && (
+                      <div className="pt-2 border-t">
+                        <span className="font-medium text-gray-700">Syllabus:</span>
+                        <div className="mt-1 text-xs text-gray-500">
+                          <ul className="list-disc pl-4">
+                            {course.syllabus.map((item, index) => (
+                              <li key={index}>{item.duration}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -497,7 +526,7 @@ const Courses = () => {
         )}
       </Card>
 
-      {/* Add/Edit Modal - FIXED with closeOnBackdropClick={false} */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
@@ -541,7 +570,7 @@ const Courses = () => {
                 <option value="">Select instructor</option>
                 {instructors.map(instructor => (
                   <option key={instructor._id} value={instructor._id}>
-                    {instructor.user?.firstName || 'Unknown'} {instructor.user?.lastName || ''} - {instructor.position || 'Staff'}
+                    {instructor.firstName || 'Unknown'} {instructor.lastName || ''} - {instructor.position || 'Staff'}
                   </option>
                 ))}
               </select>
@@ -585,6 +614,48 @@ const Courses = () => {
               value={formData.description}
               onChange={(e) => setFormData({...formData, description: e.target.value})}
             />
+          </div>
+
+          {/* Syllabus Section */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-medium text-gray-900">Syllabus (Optional)</h3>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={addSyllabusItem}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Add Duration
+              </Button>
+            </div>
+            
+            {formData.syllabus.length > 0 ? (
+              <div className="space-y-2">
+                {formData.syllabus.map((item, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder="e.g., Week 1-4: Introduction"
+                      value={item.duration}
+                      onChange={(e) => updateSyllabusItem(index, e.target.value)}
+                      className="flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeSyllabusItem(index)}
+                      className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-2">
+                No syllabus items added. Click "Add Duration" to add one.
+              </p>
+            )}
           </div>
 
           <div className="pt-4 flex justify-end gap-3">

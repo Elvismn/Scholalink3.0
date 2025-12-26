@@ -213,36 +213,46 @@ class AdminApi {
     })
   }
 
-  // Grade CRUD
-  async getGrades(params = {}) {
-    const query = new URLSearchParams(params).toString()
-    const endpoint = query ? `${API_ENDPOINTS.ADMIN.GRADES}?${query}` : API_ENDPOINTS.ADMIN.GRADES
-    return this.request(endpoint)
-  }
+// Update just the Grade CRUD section in adminApi.js:
 
-  async getGrade(id) {
-    return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id))
-  }
+// Grade CRUD
+async getGrades(params = {}) {
+  const query = new URLSearchParams(params).toString()
+  const endpoint = query ? `${API_ENDPOINTS.ADMIN.GRADES}?${query}` : API_ENDPOINTS.ADMIN.GRADES
+  return this.request(endpoint)
+}
 
-  async createGrade(data) {
-    return this.request(API_ENDPOINTS.ADMIN.GRADES, {
-      method: 'POST',
-      data
-    })
-  }
+async getGrade(id) {
+  return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id))
+}
 
-  async updateGrade(id, data) {
-    return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id), {
-      method: 'PUT',
-      data
-    })
-  }
+async createGrade(data) {
+  return this.request(API_ENDPOINTS.ADMIN.GRADES, {
+    method: 'POST',
+    data
+  })
+}
 
-  async deleteGrade(id) {
-    return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id), {
-      method: 'DELETE'
-    })
-  }
+async updateGrade(id, data) {
+  return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id), {
+    method: 'PUT',
+    data
+  })
+}
+
+async deleteGrade(id) {
+  return this.request(API_ENDPOINTS.ADMIN.GRADE_BY_ID(id), {
+    method: 'DELETE'
+  })
+}
+
+// Add this method for publishing grades (used in controller)
+async publishGrades(gradeIds) {
+  return this.request('/api/admin/grades/publish', {
+    method: 'POST',
+    data: { gradeIds }
+  })
+}
 
   // Department CRUD
   async getDepartments(params = {}) {

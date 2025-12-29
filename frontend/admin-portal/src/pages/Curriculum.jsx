@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Plus, BookOpen, Calendar, CheckCircle, Edit, Trash2, RefreshCw, FileText } from 'lucide-react'
+import { Search, Plus, BookOpen, Calendar, CheckCircle, Edit, Trash2, RefreshCw, FileText, X } from 'lucide-react'
 import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
 import { GRADE_LEVELS } from '@shared'
 import { adminApi } from '../services/adminApi'
@@ -13,11 +13,12 @@ const Curriculum = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCurriculum, setEditingCurriculum] = useState(null)
   const [courses, setCourses] = useState([])
+  const [selectedSubjects, setSelectedSubjects] = useState([])
+  const [subjectSearch, setSubjectSearch] = useState('')
   const [formData, setFormData] = useState({
     title: '',
     academicYear: new Date().getFullYear().toString(),
-    gradeLevel: '',
-    subjects: '',
+    gradeLevels: '',
     description: '',
     status: 'Draft'
   })
@@ -33,13 +34,95 @@ const Curriculum = () => {
         adminApi.getCurriculums(),
         adminApi.getCourses()
       ])
-      setCurriculums(curriculumRes.data || curriculumRes || [])
-      setCourses(coursesRes.data || coursesRes || [])
+      
+      // Handle curriculum response - FIXED: Backend returns data.curriculums
+      let curriculumData = []
+      if (curriculumRes && curriculumRes.data) {
+        if (Array.isArray(curriculumRes.data.curriculums)) {
+          curriculumData = curriculumRes.data.curriculums
+        } else if (Array.isArray(curriculumRes.data)) {
+          curriculumData = curriculumRes.data
+        }
+      }
+      setCurriculums(curriculumData || [])
+      
+      // Handle courses response
+      let coursesData = []
+      if (coursesRes && coursesRes.data) {
+        if (Array.isArray(coursesRes.data.courses)) {
+          coursesData = coursesRes.data.courses
+        } else if (Array.isArray(coursesRes.data)) {
+          coursesData = coursesRes.data
+        }
+      }
+      setCourses(coursesData || [])
     } catch (error) {
+      console.error('❌ Curriculum - Error fetching data:', error)
       showToast.error('Failed to load data', error.data?.message || error.message)
+      setCurriculums([])
+      setCourses([])
     } finally {
       setLoading(false)
     }
+  }
+
+  // Filter courses for subject selection
+  const filteredCourses = courses.filter(course => {
+    if (!subjectSearch) return true
+    const searchLower = subjectSearch.toLowerCase()
+    return (
+      course.name?.toLowerCase().includes(searchLower) ||
+      course.code?.toLowerCase().includes(searchLower) ||
+      course.description?.toLowerCase().includes(searchLower)
+    )
+  })
+
+  // Add subject to curriculum
+  const addSubject = (course) => {
+    if (!selectedSubjects.some(sub => sub.subject._id === course._id)) {
+      const subjectObj = {
+        subject: course,
+        syllabus: []
+      }
+      setSelectedSubjects([...selectedSubjects, subjectObj])
+      setSubjectSearch('')
+    }
+  }
+
+  // Remove subject from curriculum
+  const removeSubject = (courseId) => {
+    setSelectedSubjects(selectedSubjects.filter(sub => sub.subject._id !== courseId))
+  }
+
+  // Add syllabus item to subject
+  const addSyllabusItem = (courseId) => {
+    const syllabusItem = prompt('Enter syllabus item:')
+    if (syllabusItem) {
+      const updatedSubjects = selectedSubjects.map(sub => {
+        if (sub.subject._id === courseId) {
+          return {
+            ...sub,
+            syllabus: [...sub.syllabus, syllabusItem]
+          }
+        }
+        return sub
+      })
+      setSelectedSubjects(updatedSubjects)
+    }
+  }
+
+  // Remove syllabus item from subject
+  const removeSyllabusItem = (courseId, syllabusIndex) => {
+    const updatedSubjects = selectedSubjects.map(sub => {
+      if (sub.subject._id === courseId) {
+        return {
+          ...sub,
+          syllabus: sub.syllabus.filter((_, index) => index !== syllabusIndex)
+        }
+      }
+      return sub
+    })
+    setSelectedSubjects(updatedSubjects)
   }
 
   const handleSubmit = async (e) => {
@@ -47,13 +130,23 @@ const Curriculum = () => {
     setSubmitting(true)
     
     try {
+      // Prepare subjects data for backend
+      const subjectsData = selectedSubjects.map(subject => ({
+        subject: subject.subject._id,
+        syllabus: subject.syllabus
+      }))
+
       const curriculumData = {
         title: formData.title.trim(),
         academicYear: formData.academicYear,
-        gradeLevel: formData.gradeLevel,
+        gradeLevels: formData.gradeLevels, // FIXED: Use gradeLevels (plural)
         description: formData.description.trim(),
-        status: formData.status
+        status: formData.status,
+        subjects: subjectsData // FIXED: Include subjects array
       }
+
+      console.log('💾 Curriculum - Saving curriculum:', editingCurriculum ? 'update' : 'create')
+      console.log('📚 Subjects data:', subjectsData)
 
       if (editingCurriculum) {
         await adminApi.updateCurriculum(editingCurriculum._id, curriculumData)
@@ -64,16 +157,10 @@ const Curriculum = () => {
       }
       
       setIsModalOpen(false)
-      setEditingCurriculum(null)
-      setFormData({
-        title: '',
-        academicYear: new Date().getFullYear().toString(),
-        gradeLevel: '',
-        description: '',
-        status: 'Draft'
-      })
+      resetForm()
       fetchData()
     } catch (error) {
+      console.error('❌ Curriculum - Error saving curriculum:', error)
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -83,13 +170,28 @@ const Curriculum = () => {
   const handleDelete = async (curriculumId) => {
     if (window.confirm('Are you sure you want to delete this curriculum?')) {
       try {
+        console.log('🗑️ Curriculum - Deleting curriculum:', curriculumId)
         await adminApi.deleteCurriculum(curriculumId)
         showToast.success('Curriculum deleted successfully')
         fetchData()
       } catch (error) {
+        console.error('❌ Curriculum - Error deleting curriculum:', error)
         showToast.error('Failed to delete curriculum', error.data?.message || error.message)
       }
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      academicYear: new Date().getFullYear().toString(),
+      gradeLevels: '',
+      description: '',
+      status: 'Draft'
+    })
+    setSelectedSubjects([])
+    setSubjectSearch('')
+    setEditingCurriculum(null)
   }
 
   const getStatusColor = (status) => {
@@ -113,14 +215,14 @@ const Curriculum = () => {
           <div>
             <div className="font-medium text-gray-900">{title}</div>
             <div className="text-sm text-gray-500">
-              {curriculum.gradeLevel} • {curriculum.academicYear}
+              {curriculum.gradeLevels} • {curriculum.academicYear}
             </div>
           </div>
         </div>
       )
     },
     {
-      key: 'gradeLevel',
+      key: 'gradeLevels',
       title: 'Grade Level',
       render: (grade) => (
         <div className="text-gray-900">{grade}</div>
@@ -163,10 +265,20 @@ const Curriculum = () => {
               setFormData({
                 title: curriculum.title || '',
                 academicYear: curriculum.academicYear || new Date().getFullYear().toString(),
-                gradeLevel: curriculum.gradeLevel || '',
+                gradeLevels: curriculum.gradeLevels || '', // FIXED: gradeLevels (plural)
                 description: curriculum.description || '',
                 status: curriculum.status || 'Draft'
               })
+              
+              // Set selected subjects from curriculum
+              if (curriculum.subjects && Array.isArray(curriculum.subjects)) {
+                const subjectsWithDetails = curriculum.subjects.map(sub => ({
+                  subject: sub.subject || sub, // Handle both populated and non-populated
+                  syllabus: sub.syllabus || []
+                }))
+                setSelectedSubjects(subjectsWithDetails)
+              }
+              
               setIsModalOpen(true)
             }}
             className="p-1 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded"
@@ -204,14 +316,7 @@ const Curriculum = () => {
           </Button>
           <Button
             onClick={() => {
-              setEditingCurriculum(null)
-              setFormData({
-                title: '',
-                academicYear: new Date().getFullYear().toString(),
-                gradeLevel: '',
-                description: '',
-                status: 'Draft'
-              })
+              resetForm()
               setIsModalOpen(true)
             }}
             className="flex items-center gap-2"
@@ -269,7 +374,7 @@ const Curriculum = () => {
             <div className="ml-4">
               <p className="text-sm text-gray-600">Grade Levels</p>
               <p className="text-2xl font-bold">
-                {[...new Set(curriculums.map(c => c.gradeLevel).filter(Boolean))].length}
+                {[...new Set(curriculums.map(c => c.gradeLevels).filter(Boolean))].length}
               </p>
             </div>
           </div>
@@ -317,13 +422,7 @@ const Curriculum = () => {
             <p className="text-gray-500">No curriculum found</p>
             <Button
               onClick={() => {
-                setFormData({
-                  title: '',
-                  academicYear: new Date().getFullYear().toString(),
-                  gradeLevel: '',
-                  description: '',
-                  status: 'Draft'
-                })
+                resetForm()
                 setIsModalOpen(true)
               }}
               className="mt-4"
@@ -342,7 +441,7 @@ const Curriculum = () => {
               const matchesSearch = searchTerm ? (
                 curriculum.title?.toLowerCase().includes(searchLower) ||
                 curriculum.description?.toLowerCase().includes(searchLower) ||
-                curriculum.gradeLevel?.toLowerCase().includes(searchLower)
+                curriculum.gradeLevels?.toLowerCase().includes(searchLower) // FIXED: gradeLevels
               ) : true
               
               const matchesStatus = statusFilter === 'all' || curriculum.status === statusFilter
@@ -360,14 +459,15 @@ const Curriculum = () => {
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
-          setEditingCurriculum(null)
+          resetForm()
         }}
         title={editingCurriculum ? 'Edit Curriculum' : 'Add New Curriculum'}
         size="lg"
+        closeOnBackdropClick={false}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Curriculum Title"
+            label="Curriculum Title *"
             required
             placeholder="e.g., Mathematics Curriculum 2024"
             value={formData.title}
@@ -376,18 +476,18 @@ const Curriculum = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Academic Year"
+              label="Academic Year *"
               required
               placeholder="e.g., 2024"
               value={formData.academicYear}
               onChange={(e) => setFormData({...formData, academicYear: e.target.value})}
             />
             <Select
-              label="Grade Level"
+              label="Grade Level *"
               required
               options={GRADE_LEVELS.map(grade => ({ value: grade, label: grade }))}
-              value={formData.gradeLevel}
-              onChange={(e) => setFormData({...formData, gradeLevel: e.target.value})}
+              value={formData.gradeLevels}
+              onChange={(e) => setFormData({...formData, gradeLevels: e.target.value})}
             />
           </div>
 
@@ -415,18 +515,127 @@ const Curriculum = () => {
             />
           </div>
 
+          {/* Subjects Section */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Subjects *</h3>
+            
+            {/* Subject Search */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search courses to add as subjects..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
+                value={subjectSearch}
+                onChange={(e) => setSubjectSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Available Courses */}
+            {subjectSearch && filteredCourses.length > 0 && (
+              <div className="mb-4 max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+                {filteredCourses.map(course => (
+                  <div 
+                    key={course._id}
+                    className="flex items-center justify-between p-2 hover:bg-gray-50 border-b last:border-b-0"
+                  >
+                    <div>
+                      <div className="font-medium text-sm">{course.name}</div>
+                      <div className="text-xs text-gray-500">{course.code}</div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => addSubject(course)}
+                      disabled={selectedSubjects.some(sub => sub.subject._id === course._id)}
+                    >
+                      <Plus className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Selected Subjects */}
+            {selectedSubjects.length > 0 ? (
+              <div className="space-y-3">
+                {selectedSubjects.map((subject, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <div>
+                        <div className="font-medium text-sm">{subject.subject.name}</div>
+                        <div className="text-xs text-gray-500">{subject.subject.code}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeSubject(subject.subject._id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    {/* Syllabus for this subject */}
+                    <div className="mt-2">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium text-gray-700">Syllabus Items:</span>
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="xs"
+                          onClick={() => addSyllabusItem(subject.subject._id)}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add Item
+                        </Button>
+                      </div>
+                      {subject.syllabus.length > 0 ? (
+                        <ul className="space-y-1">
+                          {subject.syllabus.map((item, syllabusIndex) => (
+                            <li key={syllabusIndex} className="flex items-center justify-between text-xs bg-gray-50 px-2 py-1 rounded">
+                              <span>{item}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeSyllabusItem(subject.subject._id, syllabusIndex)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-gray-500 italic">No syllabus items added</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-2">No subjects added yet</p>
+            )}
+
+            <div className="mt-3 text-xs text-gray-500">
+              <p>Selected subjects: {selectedSubjects.length}</p>
+            </div>
+          </div>
+
           <div className="pt-4 flex justify-end gap-3">
             <Button
               variant="secondary"
               type="button"
               onClick={() => {
                 setIsModalOpen(false)
-                setEditingCurriculum(null)
+                resetForm()
               }}
             >
               Cancel
             </Button>
-            <Button type="submit" loading={submitting}>
+            <Button 
+              type="submit" 
+              loading={submitting}
+              disabled={selectedSubjects.length === 0}
+            >
               {editingCurriculum ? 'Update Curriculum' : 'Add Curriculum'}
             </Button>
           </div>

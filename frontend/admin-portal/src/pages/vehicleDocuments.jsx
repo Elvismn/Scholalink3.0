@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Search, Plus, FileText, Car, Calendar, AlertTriangle, CheckCircle, Edit, Trash2, RefreshCw, Download, Clock, XCircle, Eye, File } from 'lucide-react'
+import { Search, Plus, FileText, Car, Calendar, AlertTriangle, CheckCircle, Edit, Trash2, RefreshCw, Download, Clock, XCircle, Eye, File, Upload, X } from 'lucide-react'
 import { Button, Modal, Input, Card, showToast, Loader } from '@shared'
 import { adminApi } from '../services/adminApi'
 
@@ -38,8 +38,13 @@ const VehicleDocuments = () => {
   // Document states
   const [editingDocument, setEditingDocument] = useState(null)
   const [selectedDocument, setSelectedDocument] = useState(null)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [tagsInput, setTagsInput] = useState('')
   
   const [vehicles, setVehicles] = useState([])
+  const [staff, setStaff] = useState([])
+  
+  // FIXED: Form data matching backend schema
   const [formData, setFormData] = useState({
     vehicle: '',
     documentType: 'insurance',
@@ -47,11 +52,30 @@ const VehicleDocuments = () => {
     documentNumber: '',
     issueDate: new Date().toISOString().split('T')[0],
     expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    // FIXED: Added providerContact object
     provider: '',
+    providerContact: {
+      phone: '',
+      email: '',
+      address: ''
+    },
+    // FIXED: Added file fields
+    fileUrl: '',
+    fileName: '',
+    fileSize: 0,
+    // FIXED: Added coverage field
     premium: '',
+    coverage: '',
     status: 'active',
     renewalReminder: true,
-    reminderDays: '30'
+    reminderDays: '30',
+    // FIXED: Added verification fields
+    verified: false,
+    verifiedBy: '',
+    verificationDate: '',
+    // FIXED: Added notes and tags
+    notes: '',
+    tags: []
   })
 
   const documentTypes = [
@@ -94,9 +118,11 @@ const VehicleDocuments = () => {
         doc.title?.toLowerCase().includes(searchLower) ||
         doc.documentNumber?.toLowerCase().includes(searchLower) ||
         doc.provider?.toLowerCase().includes(searchLower) ||
+        doc.coverage?.toLowerCase().includes(searchLower) ||
         (doc.vehicle?.plateNumber?.toLowerCase().includes(searchLower)) ||
         (doc.vehicle?.make?.toLowerCase().includes(searchLower)) ||
-        (doc.vehicle?.model?.toLowerCase().includes(searchLower))
+        (doc.vehicle?.model?.toLowerCase().includes(searchLower)) ||
+        (doc.tags?.some(tag => tag.toLowerCase().includes(searchLower)))
       ) : true
       
       // Type filter
@@ -111,53 +137,58 @@ const VehicleDocuments = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [docsRes, vehiclesRes] = await Promise.all([
+      console.log('🔍 Vehicle Documents - Fetching data...')
+      const [docsRes, vehiclesRes, staffRes] = await Promise.all([
         adminApi.getVehicleDocuments(),
-        adminApi.getVehicles()
+        adminApi.getVehicles(),
+        adminApi.getStaff()
       ])
       
-      console.log('Documents API Response:', docsRes)
-      console.log('Vehicles API Response:', vehiclesRes)
-      
-      // Handle documents response - check if it's an object with data property
+      // FIXED: Handle backend data structure
       let docsData = []
-      if (docsRes) {
-        if (Array.isArray(docsRes)) {
-          docsData = docsRes
-        } else if (docsRes.data && Array.isArray(docsRes.data)) {
+      if (docsRes && docsRes.data) {
+        if (Array.isArray(docsRes.data.documents)) {
+          docsData = docsRes.data.documents
+        } else if (Array.isArray(docsRes.data)) {
           docsData = docsRes.data
-        } else if (docsRes.documents && Array.isArray(docsRes.documents)) {
-          docsData = docsRes.documents
-        } else if (typeof docsRes === 'object') {
-          // If it's an object, check for any array properties
-          const arrayProps = Object.values(docsRes).filter(Array.isArray)
-          if (arrayProps.length > 0) {
-            docsData = arrayProps[0] // Use the first array found
-          }
         }
       }
-      setDocuments(docsData)
+      setDocuments(docsData || [])
       
-      // Handle vehicles response
       let vehiclesData = []
-      if (vehiclesRes) {
-        if (Array.isArray(vehiclesRes)) {
-          vehiclesData = vehiclesRes
-        } else if (vehiclesRes.data && Array.isArray(vehiclesRes.data)) {
+      if (vehiclesRes && vehiclesRes.data) {
+        if (Array.isArray(vehiclesRes.data)) {
           vehiclesData = vehiclesRes.data
-        } else if (vehiclesRes.vehicles && Array.isArray(vehiclesRes.vehicles)) {
-          vehiclesData = vehiclesRes.vehicles
+        } else if (Array.isArray(vehiclesRes)) {
+          vehiclesData = vehiclesRes
         }
       }
-      setVehicles(vehiclesData)
+      setVehicles(vehiclesData || [])
+      
+      let staffData = []
+      if (staffRes && staffRes.data) {
+        if (Array.isArray(staffRes.data)) {
+          staffData = staffRes.data
+        } else if (Array.isArray(staffRes)) {
+          staffData = staffRes
+        }
+      }
+      setStaff(staffData || [])
+      
+      console.log('✅ Vehicle Documents - Data loaded:', {
+        documents: docsData.length,
+        vehicles: vehiclesData.length,
+        staff: staffData.length
+      })
       
       setError('')
     } catch (error) {
-      console.error('Error fetching data:', error)
+      console.error('❌ Vehicle Documents - Error fetching data:', error)
       setError('Failed to load data. Please check your connection and try again.')
       showToast.error('Failed to load data', error.data?.message || error.message)
       setDocuments([])
       setVehicles([])
+      setStaff([])
     } finally {
       setLoading(false)
     }
@@ -166,6 +197,65 @@ const VehicleDocuments = () => {
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  // FIXED: Added provider contact change handler
+  const handleProviderContactChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      providerContact: {
+        ...prev.providerContact,
+        [name]: value
+      }
+    }))
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setSelectedFile(file)
+      setFormData(prev => ({
+        ...prev,
+        fileName: file.name,
+        fileSize: file.size
+      }))
+      
+      // In a real app, you would upload the file to a server and get the URL
+      // For now, we'll simulate it with a local URL
+      const fileUrl = URL.createObjectURL(file)
+      setFormData(prev => ({ ...prev, fileUrl }))
+      
+      showToast.success('File selected: ' + file.name)
+    }
+  }
+
+  const removeFile = () => {
+    setSelectedFile(null)
+    setFormData(prev => ({
+      ...prev,
+      fileUrl: '',
+      fileName: '',
+      fileSize: 0
+    }))
+  }
+
+  const addTag = () => {
+    const tag = tagsInput.trim()
+    if (tag && !formData.tags.includes(tag)) {
+      setFormData(prev => ({
+        ...prev,
+        tags: [...prev.tags, tag]
+      }))
+      setTagsInput('')
+    }
+  }
+
+  const removeTag = (tagToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      tags: prev.tags.filter(tag => tag !== tagToRemove)
+    }))
   }
 
   const handleSubmit = async (e) => {
@@ -181,13 +271,27 @@ const VehicleDocuments = () => {
         issueDate: formData.issueDate,
         expiryDate: formData.expiryDate,
         provider: formData.provider.trim(),
+        providerContact: {
+          phone: formData.providerContact.phone.trim(),
+          email: formData.providerContact.email.trim(),
+          address: formData.providerContact.address.trim()
+        },
+        fileUrl: formData.fileUrl.trim(),
+        fileName: formData.fileName.trim(),
+        fileSize: formData.fileSize,
         premium: formData.premium ? parseFloat(formData.premium) : undefined,
+        coverage: formData.coverage.trim(),
         status: formData.status,
         renewalReminder: formData.renewalReminder,
-        reminderDays: parseInt(formData.reminderDays) || 30
+        reminderDays: parseInt(formData.reminderDays) || 30,
+        verified: formData.verified,
+        verifiedBy: formData.verifiedBy || undefined,
+        verificationDate: formData.verificationDate || undefined,
+        notes: formData.notes.trim(),
+        tags: formData.tags.map(tag => tag.trim())
       }
 
-      console.log('Saving document:', editingDocument ? 'update' : 'create')
+      console.log('💾 Vehicle Documents - Saving:', editingDocument ? 'UPDATE' : 'CREATE', documentData)
 
       if (editingDocument) {
         await adminApi.updateVehicleDocument(editingDocument._id, documentData)
@@ -198,10 +302,10 @@ const VehicleDocuments = () => {
       }
       
       await fetchData()
-      resetFormData()
+      resetForm()
       setIsModalOpen(false)
     } catch (error) {
-      console.error('Error saving document:', error)
+      console.error('❌ Vehicle Documents - Error saving:', error)
       setError('Failed to save document. Please try again.')
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
@@ -209,7 +313,7 @@ const VehicleDocuments = () => {
     }
   }
 
-  const resetFormData = () => {
+  const resetForm = () => {
     setFormData({
       vehicle: '',
       documentType: 'insurance',
@@ -218,16 +322,32 @@ const VehicleDocuments = () => {
       issueDate: new Date().toISOString().split('T')[0],
       expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       provider: '',
+      providerContact: {
+        phone: '',
+        email: '',
+        address: ''
+      },
+      fileUrl: '',
+      fileName: '',
+      fileSize: 0,
       premium: '',
+      coverage: '',
       status: 'active',
       renewalReminder: true,
-      reminderDays: '30'
+      reminderDays: '30',
+      verified: false,
+      verifiedBy: '',
+      verificationDate: '',
+      notes: '',
+      tags: []
     })
+    setSelectedFile(null)
+    setTagsInput('')
     setEditingDocument(null)
   }
 
   const handleEdit = (document) => {
-    console.log('Editing document:', document._id)
+    console.log('✏️ Vehicle Documents - Editing:', document._id)
     setEditingDocument(document)
     setFormData({
       vehicle: document.vehicle?._id || document.vehicle || '',
@@ -237,10 +357,24 @@ const VehicleDocuments = () => {
       issueDate: document.issueDate ? new Date(document.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       expiryDate: document.expiryDate ? new Date(document.expiryDate).toISOString().split('T')[0] : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       provider: document.provider || '',
+      providerContact: document.providerContact || {
+        phone: '',
+        email: '',
+        address: ''
+      },
+      fileUrl: document.fileUrl || '',
+      fileName: document.fileName || '',
+      fileSize: document.fileSize || 0,
       premium: document.premium?.toString() || '',
+      coverage: document.coverage || '',
       status: document.status || 'active',
       renewalReminder: document.renewalReminder || true,
-      reminderDays: document.reminderDays?.toString() || '30'
+      reminderDays: document.reminderDays?.toString() || '30',
+      verified: document.verified || false,
+      verifiedBy: document.verifiedBy?._id || document.verifiedBy || '',
+      verificationDate: document.verificationDate ? new Date(document.verificationDate).toISOString().split('T')[0] : '',
+      notes: document.notes || '',
+      tags: document.tags || []
     })
     setIsModalOpen(true)
   }
@@ -253,11 +387,12 @@ const VehicleDocuments = () => {
   const handleDelete = async (docId) => {
     if (window.confirm('Are you sure you want to delete this document?')) {
       try {
+        console.log('🗑️ Vehicle Documents - Deleting:', docId)
         await adminApi.deleteVehicleDocument(docId)
         showToast.success('Document deleted successfully')
         fetchData()
       } catch (error) {
-        console.error('Error deleting document:', error)
+        console.error('❌ Vehicle Documents - Error deleting:', error)
         setError('Failed to delete document. Please try again.')
         showToast.error('Failed to delete document', error.data?.message || error.message)
       }
@@ -266,12 +401,13 @@ const VehicleDocuments = () => {
 
   const renewDocument = async (docId) => {
     try {
+      console.log('🔄 Vehicle Documents - Renewing:', docId)
       const newExpiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      await adminApi.renewVehicleDocument(docId, { expiryDate: newExpiryDate })
+      await adminApi.renewVehicleDocument(docId, newExpiryDate)
       showToast.success('Document renewed successfully')
       fetchData()
     } catch (error) {
-      console.error('Error renewing document:', error)
+      console.error('❌ Vehicle Documents - Error renewing:', error)
       setError('Failed to renew document. Please try again.')
       showToast.error('Failed to renew document', error.data?.message || error.message)
     }
@@ -279,11 +415,12 @@ const VehicleDocuments = () => {
 
   const verifyDocument = async (docId) => {
     try {
+      console.log('✅ Vehicle Documents - Verifying:', docId)
       await adminApi.verifyVehicleDocument(docId)
       showToast.success('Document verified successfully')
       fetchData()
     } catch (error) {
-      console.error('Error verifying document:', error)
+      console.error('❌ Vehicle Documents - Error verifying:', error)
       setError('Failed to verify document. Please try again.')
       showToast.error('Failed to verify document', error.data?.message || error.message)
     }
@@ -292,7 +429,9 @@ const VehicleDocuments = () => {
   const calculateDaysUntilExpiry = (expiryDate) => {
     if (!expiryDate) return null
     const today = new Date()
+    today.setHours(0, 0, 0, 0)
     const expiry = new Date(expiryDate)
+    expiry.setHours(0, 0, 0, 0)
     const diffTime = expiry - today
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     return diffDays
@@ -341,8 +480,17 @@ const VehicleDocuments = () => {
     if (!amount) return 'N/A'
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'KES'
+      currency: 'KES',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount)
+  }
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return 'N/A'
+    if (bytes < 1024) return bytes + ' bytes'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
   // Calculate stats
@@ -389,8 +537,7 @@ const VehicleDocuments = () => {
           </Button>
           <Button
             onClick={() => {
-              setEditingDocument(null)
-              resetFormData()
+              resetForm()
               setIsModalOpen(true)
             }}
             className="flex items-center gap-2"
@@ -484,7 +631,7 @@ const VehicleDocuments = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search documents by title, number, provider, or vehicle..."
+                placeholder="Search documents by title, number, provider, coverage, tags, or vehicle..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -544,8 +691,7 @@ const VehicleDocuments = () => {
             {!searchTerm && (
               <Button
                 onClick={() => {
-                  setEditingDocument(null)
-                  resetFormData()
+                  resetForm()
                   setIsModalOpen(true)
                 }}
                 className="flex items-center gap-2 mx-auto"
@@ -635,6 +781,13 @@ const VehicleDocuments = () => {
                       </div>
                     )}
                     
+                    {/* Coverage */}
+                    {doc.coverage && (
+                      <div className="flex items-center gap-2">
+                        <span><strong>Coverage:</strong> {doc.coverage}</span>
+                      </div>
+                    )}
+                    
                     {/* Dates */}
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
@@ -671,6 +824,36 @@ const VehicleDocuments = () => {
                         {doc.status ? doc.status.charAt(0).toUpperCase() + doc.status.slice(1) : 'Unknown'}
                       </Badge>
                     </div>
+                    
+                    {/* Verified */}
+                    <div className="flex items-center gap-2">
+                      <span><strong>Verified:</strong></span>
+                      <Badge 
+                        variant={doc.verified ? 'success' : 'warning'}
+                        className="text-xs"
+                      >
+                        {doc.verified ? 'Yes' : 'No'}
+                      </Badge>
+                    </div>
+                    
+                    {/* File */}
+                    {doc.fileName && (
+                      <div className="flex items-center gap-2">
+                        <File className="w-4 h-4 text-gray-400" />
+                        <span><strong>File:</strong> {doc.fileName} ({formatFileSize(doc.fileSize)})</span>
+                      </div>
+                    )}
+                    
+                    {/* Tags */}
+                    {doc.tags && doc.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {doc.tags.map((tag, index) => (
+                          <Badge key={index} variant="info" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Document Actions */}
@@ -725,13 +908,12 @@ const VehicleDocuments = () => {
         </Card>
       )}
 
-      {/* Create/Edit Document Modal - FIXED with closeOnBackdropClick={false} */}
+      {/* Create/Edit Document Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
-          setEditingDocument(null)
-          resetFormData()
+          resetForm()
         }}
         closeOnBackdropClick={false}
         title={editingDocument ? 'Edit Document' : 'Add New Document'}
@@ -782,6 +964,7 @@ const VehicleDocuments = () => {
               label="Document Title *"
               name="title"
               required
+              maxLength="200"
               value={formData.title}
               onChange={handleInputChange}
               placeholder="e.g., Annual Insurance Policy"
@@ -815,25 +998,109 @@ const VehicleDocuments = () => {
             />
           </div>
 
-          <Input
-            label="Provider"
-            name="provider"
-            value={formData.provider}
-            onChange={handleInputChange}
-            placeholder="e.g., ABC Insurance Company"
-          />
+          {/* Provider Information */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Provider Information</h3>
+            <Input
+              label="Provider Name *"
+              name="provider"
+              required
+              value={formData.provider}
+              onChange={handleInputChange}
+              placeholder="e.g., ABC Insurance Company"
+            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+              <Input
+                label="Phone"
+                name="phone"
+                value={formData.providerContact.phone}
+                onChange={handleProviderContactChange}
+                placeholder="Provider phone"
+              />
+              <Input
+                label="Email"
+                name="email"
+                type="email"
+                value={formData.providerContact.email}
+                onChange={handleProviderContactChange}
+                placeholder="Provider email"
+              />
+              <Input
+                label="Address"
+                name="address"
+                value={formData.providerContact.address}
+                onChange={handleProviderContactChange}
+                placeholder="Provider address"
+              />
+            </div>
+          </div>
 
-          <Input
-            label="Premium (if applicable)"
-            name="premium"
-            type="number"
-            min="0"
-            step="0.01"
-            value={formData.premium}
-            onChange={handleInputChange}
-            placeholder="e.g., 1500.00"
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Premium (if applicable)"
+              name="premium"
+              type="number"
+              min="0"
+              step="0.01"
+              value={formData.premium}
+              onChange={handleInputChange}
+              placeholder="e.g., 1500.00"
+            />
+            <Input
+              label="Coverage Details"
+              name="coverage"
+              value={formData.coverage}
+              onChange={handleInputChange}
+              placeholder="e.g., Comprehensive coverage"
+            />
+          </div>
 
+          {/* File Upload */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Document File</h3>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <label className="flex-1">
+                  <div className="flex items-center justify-center w-full h-32 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-lg appearance-none cursor-pointer hover:border-gray-400 focus:outline-none">
+                    <span className="flex items-center space-x-2">
+                      <Upload className="w-6 h-6 text-gray-600" />
+                      <span className="font-medium text-gray-600">
+                        {selectedFile ? selectedFile.name : 'Drop files to attach, or browse'}
+                      </span>
+                    </span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileChange}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.txt"
+                    />
+                  </div>
+                </label>
+              </div>
+              {selectedFile && (
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <File className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-700">
+                      {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={removeFile}
+                    className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              <p className="text-xs text-gray-500">
+                Supported formats: PDF, DOC, DOCX, JPG, PNG, TXT. Max size: 10MB.
+              </p>
+            </div>
+          </div>
+
+          {/* Status and Verification */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -851,34 +1118,122 @@ const VehicleDocuments = () => {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Renewal Reminder
-              </label>
               <div className="flex items-center">
                 <input
                   type="checkbox"
-                  name="renewalReminder"
-                  checked={formData.renewalReminder}
-                  onChange={(e) => setFormData(prev => ({ ...prev, renewalReminder: e.target.checked }))}
+                  name="verified"
+                  checked={formData.verified}
+                  onChange={(e) => setFormData(prev => ({ ...prev, verified: e.target.checked }))}
                   className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">
-                  Send renewal reminders
-                </span>
+                <label className="ml-2 text-sm text-gray-700">
+                  Verified
+                </label>
               </div>
+              {formData.verified && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Verified By
+                  </label>
+                  <select
+                    name="verifiedBy"
+                    value={formData.verifiedBy}
+                    onChange={handleInputChange}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select staff</option>
+                    {staff.map(staffMember => (
+                      <option key={staffMember._id} value={staffMember._id}>
+                        {staffMember.firstName} {staffMember.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
-          <Input
-            label="Reminder Days Before Expiry"
-            name="reminderDays"
-            type="number"
-            min="1"
-            max="365"
-            value={formData.reminderDays}
-            onChange={handleInputChange}
-            placeholder="e.g., 30"
-          />
+          {/* Renewal Settings */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Renewal Settings</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    name="renewalReminder"
+                    checked={formData.renewalReminder}
+                    onChange={(e) => setFormData(prev => ({ ...prev, renewalReminder: e.target.checked }))}
+                    className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <label className="ml-2 text-sm text-gray-700">
+                    Send renewal reminders
+                  </label>
+                </div>
+              </div>
+              <Input
+                label="Reminder Days Before Expiry"
+                name="reminderDays"
+                type="number"
+                min="1"
+                max="365"
+                value={formData.reminderDays}
+                onChange={handleInputChange}
+                placeholder="e.g., 30"
+              />
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Tags</h3>
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={tagsInput}
+                onChange={(e) => setTagsInput(e.target.value)}
+                placeholder="Add a tag"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+              />
+              <Button type="button" onClick={addTag} variant="secondary" size="sm">
+                Add
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {formData.tags.map((tag, index) => (
+                <Badge key={index} variant="info" className="text-xs flex items-center gap-1">
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="ml-1 text-gray-500 hover:text-gray-700"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes
+            </label>
+            <textarea
+              name="notes"
+              rows="3"
+              maxLength="500"
+              value={formData.notes}
+              onChange={handleInputChange}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Additional notes about this document..."
+            />
+            <div className="text-xs text-gray-500 text-right mt-1">
+              {formData.notes.length}/500 characters
+            </div>
+          </div>
 
           <div className="pt-4 flex justify-end gap-3">
             <Button
@@ -886,8 +1241,7 @@ const VehicleDocuments = () => {
               type="button"
               onClick={() => {
                 setIsModalOpen(false)
-                setEditingDocument(null)
-                resetFormData()
+                resetForm()
               }}
             >
               Cancel
@@ -903,6 +1257,7 @@ const VehicleDocuments = () => {
       <Modal
         isOpen={viewModalOpen}
         onClose={() => setViewModalOpen(false)}
+        closeOnBackdropClick={false}
         title="Document Details"
         size="lg"
       >
@@ -910,6 +1265,7 @@ const VehicleDocuments = () => {
           (() => {
             const vehicleInfo = selectedDocument.vehicle || {}
             const expiryStatus = getExpiryStatus(selectedDocument.expiryDate)
+            const providerContact = selectedDocument.providerContact || {}
             
             return (
               <div className="space-y-6">
@@ -926,9 +1282,7 @@ const VehicleDocuments = () => {
                       {selectedDocument.documentNumber} • {formatDocumentType(selectedDocument.documentType)}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
-                      <Badge 
-                        variant={expiryStatus.variant}
-                      >
+                      <Badge variant={expiryStatus.variant}>
                         {expiryStatus.status}
                       </Badge>
                       <Badge 
@@ -937,6 +1291,9 @@ const VehicleDocuments = () => {
                                 selectedDocument.status === 'pending' ? 'warning' : 'default'}
                       >
                         {selectedDocument.status ? selectedDocument.status.charAt(0).toUpperCase() + selectedDocument.status.slice(1) : 'Unknown'}
+                      </Badge>
+                      <Badge variant={selectedDocument.verified ? 'success' : 'warning'}>
+                        {selectedDocument.verified ? 'Verified' : 'Not Verified'}
                       </Badge>
                     </div>
                   </div>
@@ -963,6 +1320,9 @@ const VehicleDocuments = () => {
                         <div>
                           <strong>Premium:</strong> {formatCurrency(selectedDocument.premium)}
                         </div>
+                        <div>
+                          <strong>Coverage:</strong> {selectedDocument.coverage || 'N/A'}
+                        </div>
                       </div>
                     </div>
 
@@ -978,6 +1338,14 @@ const VehicleDocuments = () => {
                         <div>
                           <strong>Days Until Expiry:</strong> {calculateDaysUntilExpiry(selectedDocument.expiryDate) || 'N/A'}
                         </div>
+                        <div>
+                          <strong>Renewal Reminder:</strong> {selectedDocument.renewalReminder ? 'Enabled' : 'Disabled'}
+                        </div>
+                        {selectedDocument.renewalReminder && (
+                          <div>
+                            <strong>Reminder Days:</strong> {selectedDocument.reminderDays || 30} days before expiry
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1004,23 +1372,100 @@ const VehicleDocuments = () => {
                       </div>
                     </div>
 
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-500 mb-2">Additional Information</h4>
-                      <div className="space-y-2">
-                        <div>
-                          <strong>Renewal Reminder:</strong> {selectedDocument.renewalReminder ? 'Enabled' : 'Disabled'}
-                        </div>
-                        {selectedDocument.renewalReminder && (
-                          <div>
-                            <strong>Reminder Days:</strong> {selectedDocument.reminderDays || 30} days before expiry
-                          </div>
-                        )}
-                        <div>
-                          <strong>Verified:</strong> {selectedDocument.verified ? 'Yes' : 'No'}
+                    {/* Provider Contact */}
+                    {(providerContact.phone || providerContact.email || providerContact.address) && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-500 mb-2">Provider Contact</h4>
+                        <div className="space-y-2">
+                          {providerContact.phone && (
+                            <div>
+                              <strong>Phone:</strong> {providerContact.phone}
+                            </div>
+                          )}
+                          {providerContact.email && (
+                            <div>
+                              <strong>Email:</strong> {providerContact.email}
+                            </div>
+                          )}
+                          {providerContact.address && (
+                            <div>
+                              <strong>Address:</strong> {providerContact.address}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
+                    )}
 
+                    {/* File Information */}
+                    {selectedDocument.fileName && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-500 mb-2">Document File</h4>
+                        <div className="space-y-2">
+                          <div>
+                            <strong>File Name:</strong> {selectedDocument.fileName}
+                          </div>
+                          <div>
+                            <strong>File Size:</strong> {formatFileSize(selectedDocument.fileSize)}
+                          </div>
+                          {selectedDocument.fileUrl && (
+                            <div>
+                              <strong>URL:</strong> 
+                              <a 
+                                href={selectedDocument.fileUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="ml-2 text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                View File
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Verification Information */}
+                    {selectedDocument.verified && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-500 mb-2">Verification</h4>
+                        <div className="space-y-2">
+                          <div>
+                            <strong>Verified By:</strong> {selectedDocument.verifiedBy?.firstName} {selectedDocument.verifiedBy?.lastName}
+                          </div>
+                          {selectedDocument.verificationDate && (
+                            <div>
+                              <strong>Verification Date:</strong> {formatDate(selectedDocument.verificationDate)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tags */}
+                    {selectedDocument.tags && selectedDocument.tags.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-500 mb-2">Tags</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedDocument.tags.map((tag, index) => (
+                            <Badge key={index} variant="info" className="text-xs">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notes */}
+                    {selectedDocument.notes && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-500 mb-2">Notes</h4>
+                        <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+                          {selectedDocument.notes}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Record Details */}
                     {selectedDocument.createdAt && (
                       <div>
                         <h4 className="text-sm font-medium text-gray-500 mb-2">Record Details</h4>

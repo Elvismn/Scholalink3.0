@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Plus, Fuel, Car, DollarSign, BarChart, Edit, Trash2, RefreshCw, Download, CheckCircle, XCircle, Calendar } from 'lucide-react'
+import { Search, Plus, Fuel, Car, DollarSign, BarChart, Edit, Trash2, RefreshCw, Download, CheckCircle, XCircle, Calendar, MapPin } from 'lucide-react'
 import { Button, Modal, Input, Select, Table, Card, showToast, Loader } from '@shared'
 import { adminApi } from '../services/adminApi'
 
@@ -21,13 +21,20 @@ const FuelRecords = () => {
     totalCost: '',
     odometerReading: '',
     station: '',
-    fuelType: 'diesel',
+    location: '',
+    receiptNumber: '',
     filledBy: '',
-    verified: false,
-    notes: ''
+    fuelType: 'diesel',
+    notes: '',
+    verified: false
   })
 
-  const fuelTypes = ['petrol', 'diesel', 'premium', 'other']
+  const fuelTypes = [
+    { value: 'petrol', label: 'Petrol' },
+    { value: 'diesel', label: 'Diesel' },
+    { value: 'premium', label: 'Premium' },
+    { value: 'other', label: 'Other' }
+  ]
 
   useEffect(() => {
     fetchData()
@@ -36,16 +43,53 @@ const FuelRecords = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
+      console.log('🔍 Fuel Records - Fetching data...')
       const [recordsRes, vehiclesRes, staffRes] = await Promise.all([
         adminApi.getFuelRecords(),
         adminApi.getVehicles(),
         adminApi.getStaff()
       ])
-      setFuelRecords(recordsRes.data || recordsRes || [])
-      setVehicles(vehiclesRes.data || vehiclesRes || [])
-      setStaff(staffRes.data || staffRes || [])
+      
+      // Handle fuel records response - FIXED: Backend returns data.fuelRecords
+      let fuelRecordsData = []
+      if (recordsRes && recordsRes.data) {
+        if (Array.isArray(recordsRes.data.fuelRecords)) {
+          fuelRecordsData = recordsRes.data.fuelRecords
+        } else if (Array.isArray(recordsRes.data)) {
+          fuelRecordsData = recordsRes.data
+        }
+      }
+      setFuelRecords(fuelRecordsData || [])
+      
+      // Handle vehicles response
+      let vehiclesData = []
+      if (vehiclesRes && vehiclesRes.data) {
+        if (Array.isArray(vehiclesRes.data)) {
+          vehiclesData = vehiclesRes.data
+        } else if (Array.isArray(vehiclesRes)) {
+          vehiclesData = vehiclesRes
+        }
+      }
+      setVehicles(vehiclesData || [])
+      
+      // Handle staff response
+      let staffData = []
+      if (staffRes && staffRes.data) {
+        if (Array.isArray(staffRes.data)) {
+          staffData = staffRes.data
+        } else if (Array.isArray(staffRes)) {
+          staffData = staffRes
+        }
+      }
+      setStaff(staffData || [])
+      
+      console.log('✅ Fuel Records - Data received:', fuelRecordsData.length, 'records')
     } catch (error) {
+      console.error('❌ Fuel Records - Error fetching data:', error)
       showToast.error('Failed to load data', error.data?.message || error.message)
+      setFuelRecords([])
+      setVehicles([])
+      setStaff([])
     } finally {
       setLoading(false)
     }
@@ -54,7 +98,9 @@ const FuelRecords = () => {
   useEffect(() => {
     // Calculate total cost when liters or costPerLiter changes
     if (formData.liters && formData.costPerLiter) {
-      const total = parseFloat(formData.liters) * parseFloat(formData.costPerLiter)
+      const liters = parseFloat(formData.liters) || 0
+      const costPerLiter = parseFloat(formData.costPerLiter) || 0
+      const total = liters * costPerLiter
       setFormData(prev => ({ ...prev, totalCost: total.toFixed(2) }))
     }
   }, [formData.liters, formData.costPerLiter])
@@ -69,14 +115,19 @@ const FuelRecords = () => {
         date: formData.date,
         liters: parseFloat(formData.liters),
         costPerLiter: parseFloat(formData.costPerLiter),
-        totalCost: parseFloat(formData.totalCost),
+        totalCost: parseFloat(formData.totalCost) || 0,
         odometerReading: parseFloat(formData.odometerReading),
         station: formData.station.trim(),
-        fuelType: formData.fuelType,
+        location: formData.location.trim(),
+        receiptNumber: formData.receiptNumber.trim(),
         filledBy: formData.filledBy,
-        verified: formData.verified,
-        notes: formData.notes.trim()
+        fuelType: formData.fuelType,
+        notes: formData.notes.trim(),
+        verified: formData.verified
       }
+
+      console.log('💾 Fuel Records - Saving record:', editingRecord ? 'update' : 'create')
+      console.log('📋 Record data:', recordData)
 
       if (editingRecord) {
         await adminApi.updateFuelRecord(editingRecord._id, recordData)
@@ -87,17 +138,17 @@ const FuelRecords = () => {
       }
       
       setIsModalOpen(false)
-      setEditingRecord(null)
-      resetFormData()
+      resetForm()
       fetchData()
     } catch (error) {
+      console.error('❌ Fuel Records - Error saving record:', error)
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
     }
   }
 
-  const resetFormData = () => {
+  const resetForm = () => {
     setFormData({
       vehicle: '',
       date: new Date().toISOString().split('T')[0],
@@ -106,20 +157,25 @@ const FuelRecords = () => {
       totalCost: '',
       odometerReading: '',
       station: '',
-      fuelType: 'diesel',
+      location: '',
+      receiptNumber: '',
       filledBy: '',
-      verified: false,
-      notes: ''
+      fuelType: 'diesel',
+      notes: '',
+      verified: false
     })
+    setEditingRecord(null)
   }
 
   const handleDelete = async (recordId) => {
     if (window.confirm('Are you sure you want to delete this fuel record?')) {
       try {
+        console.log('🗑️ Fuel Records - Deleting record:', recordId)
         await adminApi.deleteFuelRecord(recordId)
         showToast.success('Fuel record deleted successfully')
         fetchData()
       } catch (error) {
+        console.error('❌ Fuel Records - Error deleting record:', error)
         showToast.error('Failed to delete fuel record', error.data?.message || error.message)
       }
     }
@@ -127,10 +183,13 @@ const FuelRecords = () => {
 
   const verifyRecord = async (recordId) => {
     try {
+      console.log('✅ Fuel Records - Verifying record:', recordId)
+      // Note: Backend has verifyRecord method but frontend adminApi might need this endpoint
       await adminApi.verifyFuelRecord(recordId)
       showToast.success('Fuel record verified successfully')
       fetchData()
     } catch (error) {
+      console.error('❌ Fuel Records - Error verifying record:', error)
       showToast.error('Failed to verify record', error.data?.message || error.message)
     }
   }
@@ -147,22 +206,35 @@ const FuelRecords = () => {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-KE', {
       style: 'currency',
-      currency: 'KES'
-    }).format(amount)
+      currency: 'KES',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount || 0)
   }
 
-  const getVerificationStatus = (verified) => {
-    return verified ? (
-      <div className="flex items-center text-green-600">
-        <CheckCircle className="w-4 h-4 mr-1" />
-        <span className="text-sm font-medium">Verified</span>
-      </div>
-    ) : (
-      <div className="flex items-center text-yellow-600">
-        <XCircle className="w-4 h-4 mr-1" />
-        <span className="text-sm font-medium">Pending</span>
-      </div>
-    )
+  const getVerificationStatus = (record) => {
+    if (record.verified) {
+      return (
+        <div className="flex items-center text-green-600">
+          <CheckCircle className="w-4 h-4 mr-1" />
+          <div className="text-sm">
+            <div className="font-medium">Verified</div>
+            {record.verifiedBy && (
+              <div className="text-xs text-green-500">
+                by {record.verifiedBy?.firstName} {record.verifiedBy?.lastName}
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    } else {
+      return (
+        <div className="flex items-center text-yellow-600">
+          <XCircle className="w-4 h-4 mr-1" />
+          <span className="text-sm font-medium">Pending</span>
+        </div>
+      )
+    }
   }
 
   const columns = [
@@ -179,7 +251,7 @@ const FuelRecords = () => {
               {vehicle?.make} {vehicle?.model}
             </div>
             <div className="text-sm text-gray-500">
-              {vehicle?.plateNumber} • Odo: {record.odometerReading?.toLocaleString()} km
+              {vehicle?.plateNumber} • Odo: {(record.odometerReading || 0).toLocaleString()} km
             </div>
           </div>
         </div>
@@ -192,7 +264,7 @@ const FuelRecords = () => {
         <div className="flex items-center">
           <Calendar className="w-4 h-4 text-gray-400 mr-1" />
           <div className="text-gray-900">
-            {new Date(date).toLocaleDateString()}
+            {date ? new Date(date).toLocaleDateString('en-GB') : 'N/A'}
           </div>
         </div>
       )
@@ -204,14 +276,15 @@ const FuelRecords = () => {
         <div>
           <div className="flex items-center">
             <Fuel className="w-4 h-4 text-gray-400 mr-1" />
-            <span className="font-medium">{record.liters} L</span>
+            <span className="font-medium">{record.liters || 0} L</span>
             <span className="mx-2">•</span>
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getFuelTypeColor(record.fuelType)}`}>
-              {record.fuelType}
+              {record.fuelType?.charAt(0).toUpperCase() + record.fuelType?.slice(1)}
             </span>
           </div>
           <div className="text-sm text-gray-500 mt-1 truncate max-w-xs">
             {record.station}
+            {record.location && ` • ${record.location}`}
           </div>
         </div>
       )
@@ -225,27 +298,29 @@ const FuelRecords = () => {
             {formatCurrency(record.totalCost)}
           </div>
           <div className="text-sm text-gray-500">
-            {record.costPerLiter?.toFixed(2)}/L
+            {(record.costPerLiter || 0).toFixed(2)} KES/L
           </div>
         </div>
       )
     },
     {
-      key: 'filledBy',
-      title: 'Filled By',
-      render: (staffMember) => (
-        <div>
-          <div className="font-medium text-gray-900">
-            {staffMember?.firstName} {staffMember?.lastName}
+      key: 'receipt',
+      title: 'Receipt',
+      render: (_, record) => (
+        <div className="text-sm">
+          <div className="font-medium text-gray-900 truncate max-w-xs">
+            {record.receiptNumber || 'No receipt'}
           </div>
-          <div className="text-xs text-gray-500">{staffMember?.position}</div>
+          <div className="text-gray-500">
+            Filled by: {record.filledBy?.firstName} {record.filledBy?.lastName}
+          </div>
         </div>
       )
     },
     {
       key: 'verified',
       title: 'Status',
-      render: (verified) => getVerificationStatus(verified)
+      render: (_, record) => getVerificationStatus(record)
     },
     {
       key: 'actions',
@@ -272,10 +347,12 @@ const FuelRecords = () => {
                 totalCost: record.totalCost?.toString() || '',
                 odometerReading: record.odometerReading?.toString() || '',
                 station: record.station || '',
-                fuelType: record.fuelType || 'diesel',
+                location: record.location || '',
+                receiptNumber: record.receiptNumber || '',
                 filledBy: record.filledBy?._id || '',
-                verified: record.verified || false,
-                notes: record.notes || ''
+                fuelType: record.fuelType || 'diesel',
+                notes: record.notes || '',
+                verified: record.verified || false
               })
               setIsModalOpen(true)
             }}
@@ -302,12 +379,16 @@ const FuelRecords = () => {
     const searchLower = searchTerm.toLowerCase()
     const vehicleInfo = `${record.vehicle?.make || ''} ${record.vehicle?.model || ''} ${record.vehicle?.plateNumber || ''}`.toLowerCase()
     const station = record.station?.toLowerCase() || ''
+    const location = record.location?.toLowerCase() || ''
+    const receipt = record.receiptNumber?.toLowerCase() || ''
+    const filledByName = `${record.filledBy?.firstName || ''} ${record.filledBy?.lastName || ''}`.toLowerCase()
     
     const matchesSearch = searchTerm ? (
       vehicleInfo.includes(searchLower) ||
       station.includes(searchLower) ||
-      record.filledBy?.firstName?.toLowerCase().includes(searchLower) ||
-      record.filledBy?.lastName?.toLowerCase().includes(searchLower)
+      location.includes(searchLower) ||
+      receipt.includes(searchLower) ||
+      filledByName.includes(searchLower)
     ) : true
     
     // Date filtering logic
@@ -315,17 +396,22 @@ const FuelRecords = () => {
     if (dateFilter !== 'all') {
       const recordDate = new Date(record.date)
       const today = new Date()
+      today.setHours(0, 0, 0, 0)
       
       switch (dateFilter) {
         case 'today':
-          matchesDate = recordDate.toDateString() === today.toDateString()
+          const recordDay = new Date(recordDate)
+          recordDay.setHours(0, 0, 0, 0)
+          matchesDate = recordDay.getTime() === today.getTime()
           break
         case 'week':
-          const weekAgo = new Date(today.setDate(today.getDate() - 7))
+          const weekAgo = new Date(today)
+          weekAgo.setDate(weekAgo.getDate() - 7)
           matchesDate = recordDate >= weekAgo
           break
         case 'month':
-          const monthAgo = new Date(today.setMonth(today.getMonth() - 1))
+          const monthAgo = new Date(today)
+          monthAgo.setMonth(monthAgo.getMonth() - 1)
           matchesDate = recordDate >= monthAgo
           break
       }
@@ -334,6 +420,7 @@ const FuelRecords = () => {
     return matchesSearch && matchesDate
   })
 
+  // Calculate statistics
   const totalFuelCost = fuelRecords.reduce((sum, record) => sum + (record.totalCost || 0), 0)
   const totalFuelLiters = fuelRecords.reduce((sum, record) => sum + (record.liters || 0), 0)
   const averageCostPerLiter = totalFuelLiters > 0 ? totalFuelCost / totalFuelLiters : 0
@@ -366,8 +453,7 @@ const FuelRecords = () => {
           </Button>
           <Button
             onClick={() => {
-              setEditingRecord(null)
-              resetFormData()
+              resetForm()
               setIsModalOpen(true)
             }}
             className="flex items-center gap-2"
@@ -434,7 +520,7 @@ const FuelRecords = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search by vehicle, station, or staff..."
+                placeholder="Search by vehicle, station, location, receipt, or staff..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -493,7 +579,7 @@ const FuelRecords = () => {
             ) : (
               <Button
                 onClick={() => {
-                  resetFormData()
+                  resetForm()
                   setIsModalOpen(true)
                 }}
                 className="mt-4"
@@ -518,29 +604,34 @@ const FuelRecords = () => {
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
-          setEditingRecord(null)
-          resetFormData()
+          resetForm()
         }}
         title={editingRecord ? 'Edit Fuel Record' : 'Add New Fuel Record'}
         size="lg"
+        closeOnBackdropClick={false}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label="Vehicle"
-              required
-              options={[
-                { value: '', label: 'Select vehicle' },
-                ...vehicles.map(vehicle => ({
-                  value: vehicle._id,
-                  label: `${vehicle.make} ${vehicle.model} (${vehicle.plateNumber})`
-                }))
-              ]}
-              value={formData.vehicle}
-              onChange={(e) => setFormData({...formData, vehicle: e.target.value})}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Vehicle *
+              </label>
+              <select
+                required
+                value={formData.vehicle}
+                onChange={(e) => setFormData({...formData, vehicle: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select vehicle</option>
+                {vehicles.map(vehicle => (
+                  <option key={vehicle._id} value={vehicle._id}>
+                    {vehicle.make} {vehicle.model} ({vehicle.plateNumber})
+                  </option>
+                ))}
+              </select>
+            </div>
             <Input
-              label="Date"
+              label="Date *"
               type="date"
               required
               value={formData.date}
@@ -550,7 +641,7 @@ const FuelRecords = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input
-              label="Liters"
+              label="Liters *"
               type="number"
               required
               min="0.1"
@@ -560,7 +651,7 @@ const FuelRecords = () => {
               onChange={(e) => setFormData({...formData, liters: e.target.value})}
             />
             <Input
-              label="Cost per Liter (KES)"
+              label="Cost per Liter (KES) *"
               type="number"
               required
               min="0"
@@ -570,7 +661,7 @@ const FuelRecords = () => {
               onChange={(e) => setFormData({...formData, costPerLiter: e.target.value})}
             />
             <Input
-              label="Total Cost (KES)"
+              label="Total Cost (KES) *"
               type="number"
               required
               min="0"
@@ -584,7 +675,7 @@ const FuelRecords = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Odometer Reading (km)"
+              label="Odometer Reading (km) *"
               type="number"
               required
               min="0"
@@ -592,36 +683,66 @@ const FuelRecords = () => {
               value={formData.odometerReading}
               onChange={(e) => setFormData({...formData, odometerReading: e.target.value})}
             />
-            <Select
-              label="Fuel Type"
-              required
-              options={fuelTypes.map(type => ({ value: type, label: type.charAt(0).toUpperCase() + type.slice(1) }))}
-              value={formData.fuelType}
-              onChange={(e) => setFormData({...formData, fuelType: e.target.value})}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fuel Type *
+              </label>
+              <select
+                required
+                value={formData.fuelType}
+                onChange={(e) => setFormData({...formData, fuelType: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {fuelTypes.map(type => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input
-              label="Fuel Station"
+              label="Fuel Station *"
               required
               placeholder="Station name"
               value={formData.station}
               onChange={(e) => setFormData({...formData, station: e.target.value})}
             />
-            <Select
-              label="Filled By"
-              required
-              options={[
-                { value: '', label: 'Select staff member' },
-                ...staff.map(staffMember => ({
-                  value: staffMember._id,
-                  label: `${staffMember.user?.firstName} ${staffMember.user?.lastName} - ${staffMember.position}`
-                }))
-              ]}
-              value={formData.filledBy}
-              onChange={(e) => setFormData({...formData, filledBy: e.target.value})}
+            <Input
+              label="Location"
+              placeholder="Station location"
+              value={formData.location}
+              onChange={(e) => setFormData({...formData, location: e.target.value})}
             />
+            <Input
+              label="Receipt Number"
+              placeholder="Receipt/Invoice number"
+              value={formData.receiptNumber}
+              onChange={(e) => setFormData({...formData, receiptNumber: e.target.value})}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Filled By *
+              </label>
+              <select
+                required
+                value={formData.filledBy}
+                onChange={(e) => setFormData({...formData, filledBy: e.target.value})}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select staff member</option>
+                {staff.map(staffMember => (
+                  <option key={staffMember._id} value={staffMember._id}>
+                    {staffMember.firstName || ''} {staffMember.lastName || ''} - {staffMember.position || 'Staff'}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex items-center">
@@ -639,15 +760,19 @@ const FuelRecords = () => {
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">
-              Notes (Optional)
+              Notes (Optional, max 500 chars)
             </label>
             <textarea
               rows="3"
+              maxLength="500"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Additional notes about this fuel record..."
               value={formData.notes}
               onChange={(e) => setFormData({...formData, notes: e.target.value})}
             />
+            <div className="text-xs text-gray-500 text-right">
+              {formData.notes.length}/500 characters
+            </div>
           </div>
 
           <div className="pt-4 flex justify-end gap-3">
@@ -656,8 +781,7 @@ const FuelRecords = () => {
               type="button"
               onClick={() => {
                 setIsModalOpen(false)
-                setEditingRecord(null)
-                resetFormData()
+                resetForm()
               }}
             >
               Cancel

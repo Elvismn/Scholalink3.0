@@ -36,7 +36,7 @@ const Maintenance = () => {
   const [editingMaintenance, setEditingMaintenance] = useState(null)
   const [error, setError] = useState('')
   
-  // Form data matching backend schema
+  // Form data matching backend schema - FIXED: Added missing fields
   const [formData, setFormData] = useState({
     vehicle: '',
     date: new Date().toISOString().split('T')[0],
@@ -52,6 +52,14 @@ const Maintenance = () => {
     receiptNumber: '',
     odometerReading: '',
     partsReplaced: [],
+    // ADDED: Next service fields from backend
+    nextServiceDate: '',
+    nextServiceOdometer: '',
+    serviceInterval: '5000',
+    // ADDED: Verification fields
+    verified: false,
+    verifiedBy: '',
+    completionDate: '',
     status: 'completed',
     approvedBy: '',
     notes: '',
@@ -78,105 +86,56 @@ const Maintenance = () => {
   const fetchAllData = async () => {
     setLoading(true)
     try {
-      // Fetch all data in parallel
+      console.log('🔍 Maintenance - Fetching data...')
       const [maintenanceRes, vehiclesRes, staffRes] = await Promise.all([
         adminApi.getMaintenanceRecords(),
         adminApi.getVehicles(),
         adminApi.getStaff()
       ])
       
-      console.log('📦 Maintenance API Response:', maintenanceRes)
-      console.log('📦 Vehicles API Response:', vehiclesRes)
-      console.log('📦 Staff API Response:', staffRes)
+      console.log('✅ Maintenance - API responses received')
       
-      // Helper function to extract data from various response structures
-      const extractData = (response, dataType) => {
-        console.log(`🔍 Extracting ${dataType} from:`, response)
-        
-        // Case 1: Direct array
-        if (Array.isArray(response)) {
-          console.log(`✅ ${dataType}: Direct array, length:`, response.length)
-          return response
+      // FIXED: Handle backend data structure
+      let maintenanceData = []
+      if (maintenanceRes && maintenanceRes.data) {
+        if (Array.isArray(maintenanceRes.data.maintenance)) {
+          maintenanceData = maintenanceRes.data.maintenance
+        } else if (Array.isArray(maintenanceRes.data)) {
+          maintenanceData = maintenanceRes.data
         }
-        
-        // Case 2: { success: true, data: {...} }
-        if (response && response.success && response.data) {
-          const { data } = response
-          
-          // Case 2a: data is an array
-          if (Array.isArray(data)) {
-            console.log(`✅ ${dataType}: response.data array, length:`, data.length)
-            return data
-          }
-          
-          // Case 2b: data is an object with a key matching dataType
-          if (data && typeof data === 'object') {
-            // Try plural key first
-            const pluralKey = dataType.toLowerCase() + 's'
-            if (Array.isArray(data[pluralKey])) {
-              console.log(`✅ ${dataType}: Found in data.${pluralKey}, length:`, data[pluralKey].length)
-              return data[pluralKey]
-            }
-            
-            // Try singular key
-            if (Array.isArray(data[dataType.toLowerCase()])) {
-              console.log(`✅ ${dataType}: Found in data.${dataType.toLowerCase()}, length:`, data[dataType.toLowerCase()].length)
-              return data[dataType.toLowerCase()]
-            }
-            
-            // Try 'items' or 'results'
-            if (Array.isArray(data.items)) {
-              console.log(`✅ ${dataType}: Found in data.items, length:`, data.items.length)
-              return data.items
-            }
-            if (Array.isArray(data.results)) {
-              console.log(`✅ ${dataType}: Found in data.results, length:`, data.results.length)
-              return data.results
-            }
-            
-            // Try to extract any array from the data object
-            for (const key in data) {
-              if (Array.isArray(data[key])) {
-                console.log(`✅ ${dataType}: Found array in data.${key}, length:`, data[key].length)
-                return data[key]
-              }
-            }
-            
-            // If data is an object with an _id, wrap in array
-            if (data._id) {
-              console.log(`✅ ${dataType}: Single object, wrapping in array`)
-              return [data]
-            }
-          }
-        }
-        
-        // Case 3: Response has direct property with array
-        const pluralKey = dataType.toLowerCase() + 's'
-        if (response && Array.isArray(response[pluralKey])) {
-          console.log(`✅ ${dataType}: Direct property response.${pluralKey}, length:`, response[pluralKey].length)
-          return response[pluralKey]
-        }
-        
-        console.warn(`⚠️ ${dataType}: Could not extract data, returning empty array`)
-        return []
       }
-
-      // Extract data from each response
-      const maintenanceData = extractData(maintenanceRes, 'maintenance')
-      const vehiclesData = extractData(vehiclesRes, 'vehicle')
-      const staffData = extractData(staffRes, 'staff')
       
-      console.log('✅ FINAL Maintenance Data:', maintenanceData)
-      console.log('✅ FINAL Vehicles Data:', vehiclesData)
-      console.log('✅ FINAL Staff Data:', staffData)
+      let vehiclesData = []
+      if (vehiclesRes && vehiclesRes.data) {
+        if (Array.isArray(vehiclesRes.data)) {
+          vehiclesData = vehiclesRes.data
+        } else if (Array.isArray(vehiclesRes)) {
+          vehiclesData = vehiclesRes
+        }
+      }
       
-      setMaintenance(maintenanceData)
-      setVehicles(vehiclesData)
-      setStaff(staffData)
+      let staffData = []
+      if (staffRes && staffRes.data) {
+        if (Array.isArray(staffRes.data)) {
+          staffData = staffRes.data
+        } else if (Array.isArray(staffRes)) {
+          staffData = staffRes
+        }
+      }
+      
+      setMaintenance(maintenanceData || [])
+      setVehicles(vehiclesData || [])
+      setStaff(staffData || [])
+      
+      console.log('✅ Maintenance - Data loaded:', {
+        maintenance: maintenanceData.length,
+        vehicles: vehiclesData.length,
+        staff: staffData.length
+      })
       
       setError('')
     } catch (error) {
-      console.error('❌ Error fetching data:', error)
+      console.error('❌ Maintenance - Error fetching data:', error)
       setError('Failed to load data. Please check your connection and try again.')
       showToast.error('Failed to load data', error.data?.message || error.message)
       setMaintenance([])
@@ -246,10 +205,25 @@ const Maintenance = () => {
 
   const handlePartsInputChange = (e) => {
     const { name, value } = e.target
+    const newValue = name === 'quantity' || name === 'unitCost' || name === 'totalCost' 
+      ? Number(value) || 0 
+      : value
+    
     setPartsFormData(prev => ({ 
       ...prev, 
-      [name]: name === 'quantity' || name === 'unitCost' || name === 'totalCost' ? Number(value) || 0 : value 
+      [name]: newValue 
     }))
+    
+    // Auto-calculate total cost if unitCost or quantity changes
+    if (name === 'unitCost' || name === 'quantity') {
+      const unitCost = name === 'unitCost' ? Number(value) || 0 : partsFormData.unitCost || 0
+      const quantity = name === 'quantity' ? Number(value) || 1 : partsFormData.quantity || 1
+      const totalCost = unitCost * quantity
+      setPartsFormData(prev => ({
+        ...prev,
+        totalCost: totalCost
+      }))
+    }
   }
 
   const addPart = () => {
@@ -311,7 +285,21 @@ const Maintenance = () => {
         },
         receiptNumber: formData.receiptNumber.trim(),
         odometerReading: Number(formData.odometerReading) || 0,
-        partsReplaced: formData.partsReplaced,
+        partsReplaced: formData.partsReplaced.map(part => ({
+          name: part.name,
+          partNumber: part.partNumber,
+          quantity: Number(part.quantity) || 1,
+          unitCost: Number(part.unitCost) || 0,
+          totalCost: Number(part.totalCost) || 0
+        })),
+        // ADDED: Next service fields
+        nextServiceDate: formData.nextServiceDate || undefined,
+        nextServiceOdometer: formData.nextServiceOdometer ? Number(formData.nextServiceOdometer) : undefined,
+        serviceInterval: Number(formData.serviceInterval) || 5000,
+        // ADDED: Verification fields
+        verified: formData.verified || false,
+        verifiedBy: formData.verifiedBy || undefined,
+        completionDate: formData.completionDate || undefined,
         status: formData.status,
         approvedBy: formData.approvedBy,
         notes: formData.notes.trim(),
@@ -322,7 +310,7 @@ const Maintenance = () => {
         }
       }
 
-      console.log('💾 Saving maintenance:', editingMaintenance ? 'UPDATE' : 'CREATE', maintenanceData)
+      console.log('💾 Maintenance - Saving:', editingMaintenance ? 'UPDATE' : 'CREATE', maintenanceData)
 
       if (editingMaintenance) {
         await adminApi.updateMaintenanceRecord(editingMaintenance._id, maintenanceData)
@@ -336,7 +324,7 @@ const Maintenance = () => {
       resetForm()
       setIsModalOpen(false)
     } catch (error) {
-      console.error('❌ Error saving maintenance:', error)
+      console.error('❌ Maintenance - Error saving:', error)
       setError('Failed to save maintenance record. Please try again.')
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
@@ -345,7 +333,7 @@ const Maintenance = () => {
   }
 
   const handleEdit = (record) => {
-    console.log('✏️ Editing maintenance:', record._id)
+    console.log('✏️ Maintenance - Editing record:', record._id)
     setEditingMaintenance(record)
     
     // Populate form from record data
@@ -364,6 +352,14 @@ const Maintenance = () => {
       receiptNumber: record.receiptNumber || '',
       odometerReading: record.odometerReading || '',
       partsReplaced: record.partsReplaced || [],
+      // ADDED: Next service fields
+      nextServiceDate: record.nextServiceDate ? new Date(record.nextServiceDate).toISOString().split('T')[0] : '',
+      nextServiceOdometer: record.nextServiceOdometer || '',
+      serviceInterval: record.serviceInterval || '5000',
+      // ADDED: Verification fields
+      verified: record.verified || false,
+      verifiedBy: record.verifiedBy?._id || record.verifiedBy || '',
+      completionDate: record.completionDate ? new Date(record.completionDate).toISOString().split('T')[0] : '',
       status: record.status || 'completed',
       approvedBy: record.approvedBy?._id || record.approvedBy || '',
       notes: record.notes || '',
@@ -380,12 +376,12 @@ const Maintenance = () => {
   const handleDelete = async (maintenanceId) => {
     if (window.confirm('Are you sure you want to delete this maintenance record? This action cannot be undone.')) {
       try {
-        console.log('🗑️ Deleting maintenance:', maintenanceId)
+        console.log('🗑️ Maintenance - Deleting record:', maintenanceId)
         await adminApi.deleteMaintenanceRecord(maintenanceId)
         showToast.success('Maintenance record deleted successfully')
         fetchAllData()
       } catch (error) {
-        console.error('❌ Error deleting maintenance:', error)
+        console.error('❌ Maintenance - Error deleting:', error)
         setError('Failed to delete maintenance record. Please try again.')
         showToast.error('Failed to delete maintenance', error.data?.message || error.message)
       }
@@ -408,6 +404,14 @@ const Maintenance = () => {
       receiptNumber: '',
       odometerReading: '',
       partsReplaced: [],
+      // ADDED: Next service fields
+      nextServiceDate: '',
+      nextServiceOdometer: '',
+      serviceInterval: '5000',
+      // ADDED: Verification fields
+      verified: false,
+      verifiedBy: '',
+      completionDate: '',
       status: 'completed',
       approvedBy: '',
       notes: '',
@@ -421,7 +425,7 @@ const Maintenance = () => {
   }
 
   const openCreateModal = () => {
-    console.log('➕ Opening create maintenance modal')
+    console.log('➕ Maintenance - Opening create modal')
     resetForm()
     setIsModalOpen(true)
   }
@@ -474,7 +478,9 @@ const Maintenance = () => {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'KES'
+      currency: 'KES',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount || 0)
   }
 
@@ -800,11 +806,10 @@ const Maintenance = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
-          console.log('🟢 Maintenance modal onClose triggered')
           setIsModalOpen(false)
-          setEditingMaintenance(null)
           resetForm()
         }}
+        closeOnBackdropClick={false}
         title={editingMaintenance ? 'Edit Maintenance Record' : 'Add Maintenance Record'}
         size="lg"
       >
@@ -918,7 +923,7 @@ const Maintenance = () => {
           {/* Odometer and Receipt */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Odometer Reading *"
+              label="Odometer Reading (km) *"
               name="odometerReading"
               type="number"
               required
@@ -934,6 +939,39 @@ const Maintenance = () => {
               onChange={handleInputChange}
               placeholder="Receipt number"
             />
+          </div>
+
+          {/* Next Service Information */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Next Service Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input
+                label="Next Service Date"
+                name="nextServiceDate"
+                type="date"
+                value={formData.nextServiceDate}
+                onChange={handleInputChange}
+              />
+              <Input
+                label="Next Service Odometer (km)"
+                name="nextServiceOdometer"
+                type="number"
+                min="0"
+                value={formData.nextServiceOdometer}
+                onChange={handleInputChange}
+                placeholder="Odometer for next service"
+              />
+              <Input
+                label="Service Interval (km) *"
+                name="serviceInterval"
+                type="number"
+                required
+                min="100"
+                value={formData.serviceInterval}
+                onChange={handleInputChange}
+                placeholder="Default: 5000"
+              />
+            </div>
           </div>
 
           {/* Parts Replaced */}
@@ -995,10 +1033,14 @@ const Maintenance = () => {
               value={formData.description}
               onChange={handleInputChange}
               rows="3"
+              maxLength="1000"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Describe the maintenance work performed..."
               required
             />
+            <div className="text-xs text-gray-500 text-right mt-1">
+              {formData.description.length}/1000 characters
+            </div>
           </div>
 
           <div>
@@ -1010,9 +1052,13 @@ const Maintenance = () => {
               value={formData.notes}
               onChange={handleInputChange}
               rows="2"
+              maxLength="500"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Additional notes or comments..."
             />
+            <div className="text-xs text-gray-500 text-right mt-1">
+              {formData.notes.length}/500 characters
+            </div>
           </div>
 
           {/* Status and Approval */}
@@ -1053,6 +1099,56 @@ const Maintenance = () => {
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Verification */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Verification</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="verified"
+                  checked={formData.verified}
+                  onChange={(e) => setFormData(prev => ({ ...prev, verified: e.target.checked }))}
+                  className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <label className="text-sm text-gray-700">
+                  Verified
+                </label>
+              </div>
+              {formData.verified && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Verified By
+                  </label>
+                  <select
+                    name="verifiedBy"
+                    value={formData.verifiedBy}
+                    onChange={handleInputChange}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select Staff</option>
+                    {Array.isArray(staff) && staff.map(staffMember => (
+                      <option key={staffMember._id} value={staffMember._id}>
+                        {staffMember.firstName} {staffMember.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            {formData.status === 'completed' && (
+              <div className="mt-3">
+                <Input
+                  label="Completion Date"
+                  name="completionDate"
+                  type="date"
+                  value={formData.completionDate}
+                  onChange={handleInputChange}
+                />
+              </div>
+            )}
           </div>
 
           {/* Warranty Information */}
@@ -1098,9 +1194,7 @@ const Maintenance = () => {
               variant="secondary"
               type="button"
               onClick={() => {
-                console.log('🔘 Cancel button clicked')
                 setIsModalOpen(false)
-                setEditingMaintenance(null)
                 resetForm()
               }}
             >
@@ -1117,6 +1211,7 @@ const Maintenance = () => {
       <Modal
         isOpen={isPartsModalOpen}
         onClose={() => setIsPartsModalOpen(false)}
+        closeOnBackdropClick={false}
         title="Add Part"
         size="md"
       >

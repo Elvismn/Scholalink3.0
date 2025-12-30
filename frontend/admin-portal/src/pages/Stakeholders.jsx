@@ -19,7 +19,8 @@ const Stakeholders = () => {
     email: '',
     organization: '',
     contribution: '',
-    status: 'Active'
+    status: 'Active',
+    notes: ''
   })
 
   const stakeholderTypes = ['Distributor', 'Collaborator', 'Wellwisher', 'Sponsor', 'Partner']
@@ -32,10 +33,25 @@ const Stakeholders = () => {
   const fetchStakeholders = async () => {
     setLoading(true)
     try {
+      console.log('🔍 Stakeholders - Fetching data...')
       const response = await adminApi.getStakeholders()
-      setStakeholders(response.data || response || [])
+      
+      // Handle response - FIXED: Backend returns data.stakeholders
+      let stakeholdersData = []
+      if (response && response.data) {
+        if (Array.isArray(response.data.stakeholders)) {
+          stakeholdersData = response.data.stakeholders
+        } else if (Array.isArray(response.data)) {
+          stakeholdersData = response.data
+        }
+      }
+      setStakeholders(stakeholdersData || [])
+      
+      console.log('✅ Stakeholders - Data received:', stakeholdersData.length, 'stakeholders')
     } catch (error) {
+      console.error('❌ Stakeholders - Error fetching data:', error)
       showToast.error('Failed to load stakeholders', error.data?.message || error.message)
+      setStakeholders([])
     } finally {
       setLoading(false)
     }
@@ -53,8 +69,12 @@ const Stakeholders = () => {
         email: formData.email.trim(),
         organization: formData.organization.trim(),
         contribution: formData.contribution.trim(),
-        status: formData.status
+        status: formData.status,
+        notes: formData.notes.trim()
       }
+
+      console.log('💾 Stakeholders - Saving stakeholder:', editingStakeholder ? 'update' : 'create')
+      console.log('📋 Stakeholder data:', stakeholderData)
 
       if (editingStakeholder) {
         await adminApi.updateStakeholder(editingStakeholder._id, stakeholderData)
@@ -65,18 +85,10 @@ const Stakeholders = () => {
       }
       
       setIsModalOpen(false)
-      setEditingStakeholder(null)
-      setFormData({
-        name: '',
-        type: 'Partner',
-        contact: '',
-        email: '',
-        organization: '',
-        contribution: '',
-        status: 'Active'
-      })
+      resetForm()
       fetchStakeholders()
     } catch (error) {
+      console.error('❌ Stakeholders - Error saving stakeholder:', error)
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -86,13 +98,29 @@ const Stakeholders = () => {
   const handleDelete = async (stakeholderId) => {
     if (window.confirm('Are you sure you want to delete this stakeholder?')) {
       try {
+        console.log('🗑️ Stakeholders - Deleting stakeholder:', stakeholderId)
         await adminApi.deleteStakeholder(stakeholderId)
         showToast.success('Stakeholder deleted successfully')
         fetchStakeholders()
       } catch (error) {
+        console.error('❌ Stakeholders - Error deleting stakeholder:', error)
         showToast.error('Failed to delete stakeholder', error.data?.message || error.message)
       }
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      type: 'Partner',
+      contact: '',
+      email: '',
+      organization: '',
+      contribution: '',
+      status: 'Active',
+      notes: ''
+    })
+    setEditingStakeholder(null)
   }
 
   const getTypeColor = (type) => {
@@ -209,7 +237,8 @@ const Stakeholders = () => {
                 email: stakeholder.email || '',
                 organization: stakeholder.organization || '',
                 contribution: stakeholder.contribution || '',
-                status: stakeholder.status || 'Active'
+                status: stakeholder.status || 'Active',
+                notes: stakeholder.notes || ''
               })
               setIsModalOpen(true)
             }}
@@ -238,7 +267,8 @@ const Stakeholders = () => {
       stakeholder.name?.toLowerCase().includes(searchLower) ||
       stakeholder.email?.toLowerCase().includes(searchLower) ||
       stakeholder.organization?.toLowerCase().includes(searchLower) ||
-      stakeholder.contribution?.toLowerCase().includes(searchLower)
+      stakeholder.contribution?.toLowerCase().includes(searchLower) ||
+      stakeholder.notes?.toLowerCase().includes(searchLower)
     ) : true
     
     const matchesType = typeFilter === 'all' || stakeholder.type === typeFilter
@@ -269,16 +299,7 @@ const Stakeholders = () => {
           </Button>
           <Button
             onClick={() => {
-              setEditingStakeholder(null)
-              setFormData({
-                name: '',
-                type: 'Partner',
-                contact: '',
-                email: '',
-                organization: '',
-                contribution: '',
-                status: 'Active'
-              })
+              resetForm()
               setIsModalOpen(true)
             }}
             className="flex items-center gap-2"
@@ -397,15 +418,7 @@ const Stakeholders = () => {
             ) : (
               <Button
                 onClick={() => {
-                  setFormData({
-                    name: '',
-                    type: 'Partner',
-                    contact: '',
-                    email: '',
-                    organization: '',
-                    contribution: '',
-                    status: 'Active'
-                  })
+                  resetForm()
                   setIsModalOpen(true)
                 }}
                 className="mt-4"
@@ -430,22 +443,23 @@ const Stakeholders = () => {
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
-          setEditingStakeholder(null)
+          resetForm()
         }}
         title={editingStakeholder ? 'Edit Stakeholder' : 'Add New Stakeholder'}
         size="lg"
+        closeOnBackdropClick={false}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Name"
+              label="Name *"
               required
               placeholder="e.g., John Doe or Company Name"
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
             />
             <Select
-              label="Type"
+              label="Type *"
               required
               options={stakeholderTypes.map(type => ({ value: type, label: type }))}
               value={formData.type}
@@ -489,6 +503,19 @@ const Stakeholders = () => {
             />
           </div>
 
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Notes (Optional)
+            </label>
+            <textarea
+              rows="2"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Additional notes or comments..."
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+            />
+          </div>
+
           <Select
             label="Status"
             options={statuses.map(status => ({ value: status, label: status }))}
@@ -502,7 +529,7 @@ const Stakeholders = () => {
               type="button"
               onClick={() => {
                 setIsModalOpen(false)
-                setEditingStakeholder(null)
+                resetForm()
               }}
             >
               Cancel

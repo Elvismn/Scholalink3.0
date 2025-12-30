@@ -29,14 +29,40 @@ const Clubs = () => {
   const fetchData = async () => {
     setLoading(true)
     try {
+      console.log('🔍 Clubs - Fetching data...')
       const [clubsRes, staffRes] = await Promise.all([
         adminApi.getClubs(),
         adminApi.getStaff()
       ])
-      setClubs(clubsRes.data || clubsRes || [])
-      setStaff(staffRes.data || staffRes || [])
+      
+      // Handle clubs response - FIXED: Backend returns data.clubs
+      let clubsData = []
+      if (clubsRes && clubsRes.data) {
+        if (Array.isArray(clubsRes.data.clubs)) {
+          clubsData = clubsRes.data.clubs
+        } else if (Array.isArray(clubsRes.data)) {
+          clubsData = clubsRes.data
+        }
+      }
+      setClubs(clubsData || [])
+      
+      // Handle staff response
+      let staffData = []
+      if (staffRes && staffRes.data) {
+        if (Array.isArray(staffRes.data)) {
+          staffData = staffRes.data
+        } else if (Array.isArray(staffRes)) {
+          staffData = staffRes
+        }
+      }
+      setStaff(staffData || [])
+      
+      console.log('✅ Clubs - Data received:', clubsData.length, 'clubs')
     } catch (error) {
+      console.error('❌ Clubs - Error fetching data:', error)
       showToast.error('Failed to load data', error.data?.message || error.message)
+      setClubs([])
+      setStaff([])
     } finally {
       setLoading(false)
     }
@@ -58,6 +84,9 @@ const Clubs = () => {
         }
       }
 
+      console.log('💾 Clubs - Saving club:', editingClub ? 'update' : 'create')
+      console.log('📋 Club data:', clubData)
+
       if (editingClub) {
         await adminApi.updateClub(editingClub._id, clubData)
         showToast.success('Club updated successfully')
@@ -67,19 +96,10 @@ const Clubs = () => {
       }
       
       setIsModalOpen(false)
-      setEditingClub(null)
-      setFormData({
-        name: '',
-        patron: '',
-        description: '',
-        meetingSchedule: {
-          day: '',
-          time: '',
-          location: ''
-        }
-      })
+      resetForm()
       fetchData()
     } catch (error) {
+      console.error('❌ Clubs - Error saving club:', error)
       showToast.error('Operation failed', error.data?.message || error.message)
     } finally {
       setSubmitting(false)
@@ -89,13 +109,29 @@ const Clubs = () => {
   const handleDelete = async (clubId) => {
     if (window.confirm('Are you sure you want to delete this club?')) {
       try {
+        console.log('🗑️ Clubs - Deleting club:', clubId)
         await adminApi.deleteClub(clubId)
         showToast.success('Club deleted successfully')
         fetchData()
       } catch (error) {
+        console.error('❌ Clubs - Error deleting club:', error)
         showToast.error('Failed to delete club', error.data?.message || error.message)
       }
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      patron: '',
+      description: '',
+      meetingSchedule: {
+        day: '',
+        time: '',
+        location: ''
+      }
+    })
+    setEditingClub(null)
   }
 
   const columns = [
@@ -122,9 +158,9 @@ const Clubs = () => {
       render: (patron) => (
         <div>
           <div className="font-medium text-gray-900">
-            {patron?.firstName} {patron?.lastName}
+            {patron?.firstName || ''} {patron?.lastName || ''}
           </div>
-          <div className="text-sm text-gray-500">{patron?.position}</div>
+          <div className="text-sm text-gray-500">{patron?.position || 'No position'}</div>
         </div>
       )
     },
@@ -148,7 +184,7 @@ const Clubs = () => {
             <span className="text-gray-900">{schedule?.day || 'Not set'}</span>
           </div>
           <div className="text-gray-600 mt-1">
-            {schedule?.time} at {schedule?.location}
+            {schedule?.time} {schedule?.location && `at ${schedule.location}`}
           </div>
         </div>
       )
@@ -215,17 +251,7 @@ const Clubs = () => {
           </Button>
           <Button
             onClick={() => {
-              setEditingClub(null)
-              setFormData({
-                name: '',
-                patron: '',
-                description: '',
-                meetingSchedule: {
-                  day: '',
-                  time: '',
-                  location: ''
-                }
-              })
+              resetForm()
               setIsModalOpen(true)
             }}
             className="flex items-center gap-2"
@@ -317,16 +343,7 @@ const Clubs = () => {
             <p className="text-gray-500">No clubs found</p>
             <Button
               onClick={() => {
-                setFormData({
-                  name: '',
-                  patron: '',
-                  description: '',
-                  meetingSchedule: {
-                    day: '',
-                    time: '',
-                    location: ''
-                  }
-                })
+                resetForm()
                 setIsModalOpen(true)
               }}
               className="mt-4"
@@ -346,7 +363,9 @@ const Clubs = () => {
               return (
                 club.name?.toLowerCase().includes(searchLower) ||
                 patronName.includes(searchLower) ||
-                club.description?.toLowerCase().includes(searchLower)
+                club.description?.toLowerCase().includes(searchLower) ||
+                club.meetingSchedule?.day?.toLowerCase().includes(searchLower) ||
+                club.meetingSchedule?.location?.toLowerCase().includes(searchLower)
               )
             })}
             keyField="_id"
@@ -360,33 +379,39 @@ const Clubs = () => {
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
-          setEditingClub(null)
+          resetForm()
         }}
         title={editingClub ? 'Edit Club' : 'Add New Club'}
         size="lg"
+        closeOnBackdropClick={false}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Club Name"
+            label="Club Name *"
             required
             placeholder="e.g., Science Club, Chess Club"
             value={formData.name}
             onChange={(e) => setFormData({...formData, name: e.target.value})}
           />
 
-          <Select
-            label="Club Patron"
-            required
-            options={[
-              { value: '', label: 'Select patron' },
-              ...staff.map(staffMember => ({
-                value: staffMember._id,
-                label: `${staffMember.user?.firstName} ${staffMember.user?.lastName} - ${staffMember.position}`
-              }))
-            ]}
-            value={formData.patron}
-            onChange={(e) => setFormData({...formData, patron: e.target.value})}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Club Patron *
+            </label>
+            <select
+              required
+              value={formData.patron}
+              onChange={(e) => setFormData({...formData, patron: e.target.value})}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select patron</option>
+              {staff.map(staffMember => (
+                <option key={staffMember._id} value={staffMember._id}>
+                  {staffMember.firstName || ''} {staffMember.lastName || ''} - {staffMember.position || 'Staff'}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">
@@ -440,7 +465,7 @@ const Clubs = () => {
               type="button"
               onClick={() => {
                 setIsModalOpen(false)
-                setEditingClub(null)
+                resetForm()
               }}
             >
               Cancel

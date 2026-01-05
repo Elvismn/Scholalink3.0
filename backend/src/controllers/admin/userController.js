@@ -144,15 +144,8 @@ const updateUser = async (req, res) => {
     if (role) updateData.role = role;
     if (typeof isActive !== 'undefined') updateData.isActive = isActive;
     if (profile) updateData.profile = profile;
-    
-    // ✅ REMOVE password hashing here - let the pre-save hook handle it
-    // OR remove this block entirely if you're not using pre-save hook
     if (password) {
-      updateData.password = password; // Let pre-save hook hash it
-      // OR if no pre-save hook: hash manually:
-      // const bcrypt = require('bcrypt');
-      // const salt = await bcrypt.genSalt(12);
-      // updateData.password = await bcrypt.hash(password, salt);
+      updateData.password = password; 
     }
 
     const user = await User.findByIdAndUpdate(
@@ -255,6 +248,45 @@ const getUserStats = async (req, res) => {
     });
   }
 };
+// Add to userController.js
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id; // From auth middleware
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Verify current password
+    const isValidPassword = await user.comparePassword(currentPassword);
+    if (!isValidPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Current password is incorrect'
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
 
 module.exports = {
   createUser,
@@ -262,5 +294,6 @@ module.exports = {
   getUser,
   updateUser,
   deleteUser,
-  getUserStats
+  getUserStats,
+  changePassword
 };

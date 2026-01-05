@@ -57,6 +57,16 @@ class AdminApi {
       throw error
     }
   }
+  // Change Password
+    async changePassword(currentPassword, newPassword) {
+    return this.request(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, {
+      method: 'POST',
+      data: {
+        currentPassword,
+        newPassword
+      }
+    })
+  }
 
   // Student CRUD
   async getStudents(params = {}) {

@@ -31,6 +31,7 @@ const Departments = () => {
   const [editingDept, setEditingDept] = useState(null)
   const [staff, setStaff] = useState([])
   const [error, setError] = useState('')
+  const [expandedDescriptions, setExpandedDescriptions] = useState({})
   const [formData, setFormData] = useState({
     name: '',
     head: '',
@@ -188,6 +189,13 @@ const Departments = () => {
     console.log('➕ Departments - Opening create modal')
     resetForm()
     setIsModalOpen(true)
+  }
+
+  const toggleDescription = (deptId) => {
+    setExpandedDescriptions(prev => ({
+      ...prev,
+      [deptId]: !prev[deptId]
+    }))
   }
 
   // Calculate stats safely
@@ -380,20 +388,23 @@ const Departments = () => {
                 ? `${dept.head.user?.firstName || ''} ${dept.head.user?.lastName || ''}`.trim()
                 : 'No HoD assigned'
               const hodPosition = dept.head?.position || ''
+              const isExpanded = expandedDescriptions[dept._id]
+              const description = dept.description || 'No description'
+              const shouldTruncate = description.length > 100 && !isExpanded
+              const displayDescription = shouldTruncate 
+                ? description.substring(0, 100) + '...'
+                : description
               
               return (
-                <div key={dept._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div key={dept._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow overflow-hidden"> {/* ADDED: overflow-hidden here */}
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                           <Building className="w-5 h-5 text-blue-600" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <h3 className="font-semibold text-gray-900 truncate">{dept.name}</h3>
-                          <p className="text-sm text-gray-600 truncate">
-                            {dept.description || 'No description'}
-                          </p>
                         </div>
                       </div>
                     </div>
@@ -425,31 +436,46 @@ const Departments = () => {
                     </div>
                   </div>
                   
+                  {/* Description with read more/read less functionality */}
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-600 break-words whitespace-pre-line"> {/* ADDED: whitespace-pre-line for better text formatting */}
+                      {displayDescription}
+                      {description.length > 100 && (
+                        <button
+                          onClick={() => toggleDescription(dept._id)}
+                          className="ml-1 text-blue-600 hover:text-blue-800 font-medium text-sm"
+                        >
+                          {isExpanded ? ' Read less' : ' Read more'}
+                        </button>
+                      )}
+                    </p>
+                  </div>
+                  
                   <div className="space-y-2 text-sm text-gray-600">
                     <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-gray-400" />
-                      <span><strong>Head of Department:</strong> {hodName}</span>
+                      <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="break-words"><strong>Head of Department:</strong> {hodName}</span>
                     </div>
                     
                     {hodPosition && (
                       <div className="flex items-center gap-2">
-                        <span><strong>HoD Position:</strong> {hodPosition}</span>
+                        <span className="break-words"><strong>HoD Position:</strong> {hodPosition}</span>
                       </div>
                     )}
                     
                     <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-gray-400" />
+                      <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <span><strong>Staff Members:</strong> {dept.staffCount || 0}</span>
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-gray-400" />
+                      <DollarSign className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <span><strong>Annual Budget:</strong> KES {(dept.budget || 0).toLocaleString()}</span>
                     </div>
                     
                     {dept.contactEmail && (
                       <div className="flex items-center gap-2">
-                        <span><strong>Contact:</strong> {dept.contactEmail}</span>
+                        <span className="break-words"><strong>Contact:</strong> {dept.contactEmail}</span>
                       </div>
                     )}
                   </div>
